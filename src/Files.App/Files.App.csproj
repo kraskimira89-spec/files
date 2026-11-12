@@ -217,4 +217,15 @@
         </ItemGroup>
         <Copy SourceFiles="@(_FilesAppServerOutputFile)" DestinationFiles="@(_FilesAppServerOutputFile->'$(FilesAppServerOutputDir)%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
     </Target>
+
+    <!-- WinUI packs AppTiles into PRI only; Start/taskbar logos for -Register layout need loose files. -->
+    <Target Name="CopyAppTilesToOutput" AfterTargets="Build">
+        <ItemGroup>
+            <_AppTilesOutputFile Include="$(MSBuildProjectDirectory)\Assets\AppTiles\**\*.*" />
+        </ItemGroup>
+        <Copy
+            SourceFiles="@(_AppTilesOutputFile)"
+            DestinationFiles="@(_AppTilesOutputFile->'$(OutDir)Assets\AppTiles\%(RecursiveDir)%(Filename)%(Extension)')"
+            SkipUnchangedFiles="true" />
+    </Target>
 </Project>

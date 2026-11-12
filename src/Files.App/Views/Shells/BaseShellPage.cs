@@ -836,38 +836,8 @@ namespace Files.App.Views.Shells
 				});
 			}
 
-			// Defer so we never stack a second ContentDialog during shell init (blocks all UI input).
-			_ = DisplayAssociationsPreviewOnboardingAsync();
-		}
-
-		/// <summary>
-		/// One-time onboarding mock for associations preview (no registry writes).
-		/// </summary>
-		protected async Task DisplayAssociationsPreviewOnboardingAsync()
-		{
-			if (Helpers.Associations.AssociationsPreviewService.HasSeenAssociationsPreview)
-				return;
-
-			// Claim the flag immediately so multiple shell tabs don't each open a dialog.
-			Helpers.Associations.AssociationsPreviewService.HasSeenAssociationsPreview = true;
-
-			try
-			{
-				// Wait until the window is interactive and any consent dialog has closed.
-				await Task.Delay(1500);
-				await DispatcherQueue.EnqueueOrInvokeAsync(async () =>
-				{
-					if (MainWindow.Instance?.Content?.XamlRoot is null)
-						return;
-
-					UIHelpers.CloseAllDialogs();
-					await DynamicDialogFactory.ShowFor_AssociationsPreviewAsync(isOnboarding: true);
-				});
-			}
-			catch
-			{
-				// Never leave a stuck modal that blocks all clicks.
-			}
+			// Associations preview is available from Settings → Advanced; do not open a
+			// ContentDialog during shell startup (adds delay and can block input).
 		}
 
 		protected void SelectSidebarItemFromPath(Type? incomingSourcePageType = null)
