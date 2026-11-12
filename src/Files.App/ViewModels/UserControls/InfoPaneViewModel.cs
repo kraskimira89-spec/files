@@ -222,31 +222,45 @@ namespace Files.App.ViewModels.UserControls
 				return;
 			}
 
-			var control = await GetBuiltInPreviewControlAsync(item, downloadItem);
+			// Show the control immediately; finish loading under the same cancellation token.
+			var builtIn = CreateBuiltInPreviewControl(item, downloadItem);
 
 			if (token.IsCancellationRequested)
 				return;
 
-			if (control is not null)
+			if (builtIn is not null)
 			{
-				PreviewPaneContent = control;
+				PreviewPaneContent = builtIn.Value.Control;
+				PreviewPaneState = SelectedDriveItem is not null ? PreviewPaneStates.DriveStorageDetailsAvailable : PreviewPaneStates.PreviewAndDetailsAvailable;
+
+				await builtIn.Value.LoadTask;
+				return;
+			}
+
+			// Unknown extensions: sniff as text before falling back to thumbnail-only preview.
+			var textControl = await TextPreviewViewModel.TryLoadAsTextAsync(item);
+			if (token.IsCancellationRequested)
+				return;
+
+			if (textControl is not null)
+			{
+				PreviewPaneContent = textControl;
 				PreviewPaneState = SelectedDriveItem is not null ? PreviewPaneStates.DriveStorageDetailsAvailable : PreviewPaneStates.PreviewAndDetailsAvailable;
 				return;
 			}
 
 			var basicModel = new BasicPreviewViewModel(item);
-			await basicModel.LoadAsync();
-
-			control = new BasicPreview(basicModel);
-
-			if (token.IsCancellationRequested)
-				return;
-
+			var control = new BasicPreview(basicModel);
 			PreviewPaneContent = control;
 			PreviewPaneState = SelectedDriveItem is not null ? PreviewPaneStates.DriveStorageDetailsAvailable : PreviewPaneStates.PreviewAndDetailsAvailable;
+
+			await basicModel.LoadAsync();
 		}
 
-		private async Task<UserControl?> GetBuiltInPreviewControlAsync(ListedItem item, bool downloadItem)
+		/// <summary>
+		/// Creates the preview control without waiting for <see cref="BasePreviewModel.LoadAsync"/> so the pane can paint first.
+		/// </summary>
+		private (UserControl Control, Task LoadTask)? CreateBuiltInPreviewControl(ListedItem item, bool downloadItem)
 		{
 			ShowCloudItemButton = false;
 
@@ -255,44 +269,35 @@ namespace Files.App.ViewModels.UserControls
 				if (item.PrimaryItemAttribute == StorageItemTypes.Folder && !item.IsArchive)
 				{
 					var model = new FolderPreviewViewModel(item);
-					await model.LoadAsync();
-
-					return new FolderPreview(model);
+					return (new FolderPreview(model), model.LoadAsync());
 				}
 				else
 				{
 					var model = new BasicPreviewViewModel(item);
-					await model.LoadAsync();
-
-					return new BasicPreview(model);
+					return (new BasicPreview(model), model.LoadAsync());
 				}
 			}
 
 			if (item.IsShortcut)
 			{
 				var model = new ShortcutPreviewViewModel(item);
-				await model.LoadAsync();
-
-				return new BasicPreview(model);
+				return (new BasicPreview(model), model.LoadAsync());
 			}
 
 			if (FileExtensionHelpers.IsBrowsableZipFile(item.FileExtension, out _))
 			{
 				var model = new ArchivePreviewViewModel(item);
-				await model.LoadAsync();
-
-				return new BasicPreview(model);
+				return (new BasicPreview(model), model.LoadAsync());
 			}
 
 			if (item.PrimaryItemAttribute == StorageItemTypes.Folder)
 			{
 				var model = new FolderPreviewViewModel(item);
-				await model.LoadAsync();
 
 				if (contentPageContext.SelectedItems.Count == 0)
 					item.FileTags ??= FileTagsHelper.ReadFileTag(item.ItemPath!);
 
-				return new FolderPreview(model);
+				return (new FolderPreview(model), model.LoadAsync());
 			}
 
 			if (item.FileExtension is null)
@@ -312,65 +317,37 @@ namespace Files.App.ViewModels.UserControls
 				(FileExtensionHelpers.IsAudioFile(ext) || FileExtensionHelpers.IsVideoFile(ext)))
 			{
 				var model = new MediaPreviewViewModel(item);
-				await model.LoadAsync();
-
-				return new MediaPreview(model);
+				return (new MediaPreview(model), model.LoadAsync());
 			}
 
 			if (FileExtensionHelpers.IsMarkdownFile(ext))
 			{
 				var model = new MarkdownPreviewViewModel(item);
-				await model.LoadAsync();
-
-				return new MarkdownPreview(model);
+				return (new MarkdownPreview(model), model.LoadAsync());
 			}
 
 			if (FileExtensionHelpers.IsImagePreviewFile(ext))
 			{
 				var model = new ImagePreviewViewModel(item);
-				await model.LoadAsync();
-
-				return new ImagePreview(model);
+				return (new ImagePreview(model), model.LoadAsync());
 			}
 
 			if (FileExtensionHelpers.IsTextFile(ext))
 			{
 				var model = new TextPreviewViewModel(item);
-				await model.LoadAsync();
-
-				return new TextPreview(model);
+				return (new TextPreview(model), model.LoadAsync());
 			}
-
-			/*if (FileExtensionHelpers.IsPdfFile(ext))
-			{
-				var model = new PDFPreviewViewModel(item);
-				await model.LoadAsync();
-
-				return new PDFPreview(model);
-			}*/
-
-			/*if (FileExtensionHelpers.IsHtmlFile(ext))
-			{
-				var model = new HtmlPreviewViewModel(item);
-				await model.LoadAsync();
-
-				return new HtmlPreview(model);
-			}*/
 
 			if (FileExtensionHelpers.IsRichTextFile(ext))
 			{
 				var model = new RichTextPreviewViewModel(item);
-				await model.LoadAsync();
-
-				return new RichTextPreview(model);
+				return (new RichTextPreview(model), model.LoadAsync());
 			}
 
 			if (CodePreviewViewModel.IsCodeFile(ext))
 			{
 				var model = new CodePreviewViewModel(item);
-				await model.LoadAsync();
-
-				return new CodePreview(model);
+				return (new CodePreview(model), model.LoadAsync());
 			}
 
 			if (ShellPreviewViewModel.FindPreviewHandlerFor(item.FileExtension, 0) is not null &&
@@ -378,14 +355,11 @@ namespace Files.App.ViewModels.UserControls
 				!FileExtensionHelpers.IsExecutableFile(item.FileExtension))
 			{
 				var model = new ShellPreviewViewModel(item);
-				await model.LoadAsync();
-
-				return new ShellPreview(model);
+				return (new ShellPreview(model), model.LoadAsync());
 			}
 
-			var control = await TextPreviewViewModel.TryLoadAsTextAsync(item);
-
-			return control ?? null;
+			// Text sniff still needs a full await before we know if a control exists.
+			return null;
 		}
 
 		private int previewRequestVersion;
@@ -531,13 +505,13 @@ namespace Files.App.ViewModels.UserControls
 					throw new InvalidOperationException("The preview pane does not have a selected item.");
 
 				var basicModel = new BasicPreviewViewModel(selectedItem);
+				PreviewPaneContent = new BasicPreview(basicModel);
+				PreviewPaneState = SelectedDriveItem is not null ? PreviewPaneStates.DriveStorageDetailsAvailable : PreviewPaneStates.PreviewAndDetailsAvailable;
+
 				await basicModel.LoadAsync();
 
 				if (token.IsCancellationRequested)
 					return;
-
-				PreviewPaneContent = new BasicPreview(basicModel);
-				PreviewPaneState = SelectedDriveItem is not null ? PreviewPaneStates.DriveStorageDetailsAvailable : PreviewPaneStates.PreviewAndDetailsAvailable;
 			}
 			catch (Exception ex)
 			{

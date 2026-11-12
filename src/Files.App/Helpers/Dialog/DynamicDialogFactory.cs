@@ -527,35 +527,23 @@ namespace Files.App.Helpers
 		}
 
 		/// <summary>
-		/// Shows a read-only preview of handlers Files would affect as default file manager.
-		/// Does not write the registry.
+		/// Shows a preview of handlers Files would affect as default file manager.
+		/// Returns <see cref="DynamicDialogResult.Primary"/> when the user confirms.
 		/// </summary>
-		public static async Task ShowFor_AssociationsPreviewAsync(bool isOnboarding)
+		public static async Task<DynamicDialogResult> ShowFor_AssociationsPreviewAsync(bool isOnboarding)
 		{
 			if (MainWindow.Instance?.Content?.XamlRoot is null)
-				return;
+				return DynamicDialogResult.Cancel;
 
 			UIHelpers.CloseAllDialogs();
 
-			var items = await Associations.AssociationsPreviewService.BuildPreviewAsync();
-
 			var panel = new StackPanel { Spacing = 12, MinWidth = 360 };
-			foreach (var item in items)
+			var loadingText = new TextBlock
 			{
-				panel.Children.Add(new TextBlock
-				{
-					Text = item.Title,
-					FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-					TextWrapping = TextWrapping.WrapWholeWords,
-				});
-				panel.Children.Add(new TextBlock
-				{
-					Text = item.CurrentHandler,
-					Opacity = 0.85,
-					TextWrapping = TextWrapping.WrapWholeWords,
-					IsTextSelectionEnabled = true,
-				});
-			}
+				Text = Strings.Loading.GetLocalizedResource(),
+				Opacity = 0.85,
+			};
+			panel.Children.Add(loadingText);
 
 			var scroll = new ScrollViewer
 			{
@@ -581,7 +569,47 @@ namespace Files.App.Helpers
 				DynamicButtons = DynamicDialogButtons.Primary | DynamicDialogButtons.Cancel
 			});
 
-			await dialog.TryShowAsync();
+			// Show dialog immediately, then fill rows when registry reads finish.
+			var showTask = dialog.TryShowAsync();
+			_ = FillAssociationsPreviewPanelAsync(panel, loadingText);
+
+			await showTask;
+			return dialog.DynamicResult;
+		}
+
+		private static async Task FillAssociationsPreviewPanelAsync(StackPanel panel, TextBlock loadingText)
+		{
+			try
+			{
+				var items = await Associations.AssociationsPreviewService.BuildPreviewAsync();
+				await MainWindow.Instance.DispatcherQueue.EnqueueOrInvokeAsync(() =>
+				{
+					panel.Children.Clear();
+					foreach (var item in items)
+					{
+						panel.Children.Add(new TextBlock
+						{
+							Text = item.Title,
+							FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+							TextWrapping = TextWrapping.WrapWholeWords,
+						});
+						panel.Children.Add(new TextBlock
+						{
+							Text = item.CurrentHandler,
+							Opacity = 0.85,
+							TextWrapping = TextWrapping.WrapWholeWords,
+							IsTextSelectionEnabled = true,
+						});
+					}
+				});
+			}
+			catch
+			{
+				await MainWindow.Instance.DispatcherQueue.EnqueueOrInvokeAsync(() =>
+				{
+					loadingText.Text = Strings.AssociationsPreviewCurrentHandlerUnknown.GetLocalizedResource();
+				});
+			}
 		}
 	}
 }

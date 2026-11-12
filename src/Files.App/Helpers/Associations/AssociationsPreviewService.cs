@@ -16,7 +16,9 @@ namespace Files.App.Helpers.Associations
 		/// <summary>
 		/// When false, UI may show preview but must not call regedit / launcher install.
 		/// </summary>
-		public const bool IsDefaultAssociationApplyEnabled = false;
+		public const bool IsDefaultAssociationApplyEnabled = true;
+
+		private static IReadOnlyList<AssociationsPreviewItem>? _sessionCache;
 
 		public static readonly string[] PackagedArchiveExtensions =
 		[
@@ -39,6 +41,9 @@ namespace Files.App.Helpers.Associations
 
 		public static async Task<IReadOnlyList<AssociationsPreviewItem>> BuildPreviewAsync()
 		{
+			if (_sessionCache is not null)
+				return _sessionCache;
+
 			var items = new List<AssociationsPreviewItem>
 			{
 				new()
@@ -61,22 +66,29 @@ namespace Files.App.Helpers.Associations
 				},
 			};
 
-			foreach (var extension in PackagedArchiveExtensions)
+			var archiveTasks = PackagedArchiveExtensions.Select(async extension =>
 			{
 				var probePath = Path.Combine(Path.GetTempPath(), $"files-assoc-preview{extension}");
 				var handler = await Win32Helper.GetDefaultFileAssociationAsync(probePath).ConfigureAwait(false);
-				items.Add(new AssociationsPreviewItem
+				return new AssociationsPreviewItem
 				{
 					Title = string.Format(Strings.AssociationsPreviewItemArchive.GetLocalizedResource(), extension),
 					CurrentHandler = string.IsNullOrWhiteSpace(handler)
 						? Strings.AssociationsPreviewCurrentHandlerUnknown.GetLocalizedResource()
 						: handler!,
 					Detail = extension,
-				});
-			}
+				};
+			});
 
+			items.AddRange(await Task.WhenAll(archiveTasks).ConfigureAwait(false));
+			_sessionCache = items;
 			return items;
 		}
+
+		/// <summary>
+		/// Clears the in-process preview cache after associations may have changed.
+		/// </summary>
+		public static void InvalidatePreviewCache() => _sessionCache = null;
 
 		private static string GetShellCommandHandler(string relativeSubKey)
 		{

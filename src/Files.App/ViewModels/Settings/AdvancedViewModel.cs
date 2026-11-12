@@ -82,13 +82,21 @@ namespace Files.App.ViewModels.Settings
 			if (IsSetAsDefaultFileManager == DetectIsSetAsDefaultFileManager())
 				return;
 
-			// Preview-only stage: show what would change, do not write registry / install launcher.
-			if (!AssociationsPreviewService.IsDefaultAssociationApplyEnabled)
+			// Confirm what will change; Cancel/Later restores the toggle without writing the registry.
+			var previewResult = await DynamicDialogFactory.ShowFor_AssociationsPreviewAsync(isOnboarding: false);
+			if (previewResult is not DynamicDialogResult.Primary)
 			{
-				await DynamicDialogFactory.ShowFor_AssociationsPreviewAsync(isOnboarding: false);
 				IsSetAsDefaultFileManager = DetectIsSetAsDefaultFileManager();
 				return;
 			}
+
+			if (!AssociationsPreviewService.IsDefaultAssociationApplyEnabled)
+			{
+				IsSetAsDefaultFileManager = DetectIsSetAsDefaultFileManager();
+				return;
+			}
+
+			AssociationsPreviewService.InvalidatePreviewCache();
 
 			var destFolder = Path.Combine(ApplicationData.Current.LocalFolder.Path, "FilesOpenDialog");
 			Directory.CreateDirectory(destFolder);

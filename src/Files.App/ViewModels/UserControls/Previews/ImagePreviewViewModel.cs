@@ -25,12 +25,27 @@ namespace Files.App.ViewModels.Previews
 
 		public override async Task<List<FileProperty>> LoadPreviewAndDetailsAsync()
 		{
+			// Paint the list thumbnail immediately so the pane is not blank while the full image decodes.
+			if (Item.FileImage is not null)
+			{
+				await MainWindow.Instance.DispatcherQueue.EnqueueOrInvokeAsync(() =>
+				{
+					ImageSource = Item.FileImage;
+				});
+			}
+
 			using IRandomAccessStream stream = await PreviewFile.OpenAsync(FileAccessMode.Read);
+			LoadCancelledTokenSource.Token.ThrowIfCancellationRequested();
 
 			await MainWindow.Instance.DispatcherQueue.EnqueueOrInvokeAsync(async () =>
 			{
-				BitmapImage bitmap = new();
+				BitmapImage bitmap = new()
+				{
+					// Cap decode size so large photos open faster in the pane.
+					DecodePixelWidth = 2048,
+				};
 				await bitmap.SetSourceAsync(stream);
+				LoadCancelledTokenSource.Token.ThrowIfCancellationRequested();
 				ImageSource = bitmap;
 			});
 

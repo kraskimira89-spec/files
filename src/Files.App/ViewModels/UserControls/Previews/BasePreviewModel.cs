@@ -127,9 +127,6 @@ namespace Files.App.ViewModels.Previews
 				?? throw new InvalidDataException("The preview property definition is missing the latitude field.");
 			var longitude = list.Find(x => x.Property is "System.GPS.LongitudeDecimal")
 				?? throw new InvalidDataException("The preview property definition is missing the longitude field.");
-			address.Value = await LocationHelpers.GetAddressFromCoordinatesAsync(
-				(double?)latitude.Value,
-				(double?)longitude.Value);
 
 			// Adds the value for the file tag
 			var fileTag = list.FirstOrDefault(x => x.ID is "filetag")
@@ -138,7 +135,25 @@ namespace Files.App.ViewModels.Previews
 				? string.Join(',', Item.FileTagsUI.Select(x => x.Name))
 				: null;
 
-			return list.Where(i => i.ValueText is not null).ToList();
+			var result = list.Where(i => i.ValueText is not null || i.ID is "address").ToList();
+
+			// Reverse geocode off the hot path — update Address when Bing responds.
+			_ = FillAddressAsync(address, latitude, longitude);
+
+			return result;
+		}
+
+		private static async Task FillAddressAsync(FileProperty address, FileProperty latitude, FileProperty longitude)
+		{
+			try
+			{
+				address.Value = await LocationHelpers.GetAddressFromCoordinatesAsync(
+					(double?)latitude.Value,
+					(double?)longitude.Value);
+			}
+			catch
+			{
+			}
 		}
 
 		private sealed partial class DetailsOnlyPreviewModel : BasePreviewModel
