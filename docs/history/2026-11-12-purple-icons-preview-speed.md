@@ -11,3 +11,8 @@
 ## Проверка
 - msbuild Debug x64 OK после unregister/rename lockbak
 - Files + Files.App.Server Responding=True
+
+## Дополнение (иконки Пуск/панель + старт)
+- Причина пустого значка: AppTiles были только в PRI, не как loose-файлы в layout `-Register`
+- Target `CopyAppTilesToOutput` + перерегистрация + сброс icon cache
+- Убран авто-диалог associations при старте (замедлял запуск)
