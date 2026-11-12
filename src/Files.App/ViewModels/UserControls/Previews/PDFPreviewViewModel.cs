@@ -31,6 +31,7 @@ namespace Files.App.ViewModels.Previews
 		public PDFPreviewViewModel(ListedItem item)
 			: base(item)
 		{
+			LoadingBarVisibility = Visibility.Visible;
 		}
 
 		public async override Task<List<FileProperty>> LoadPreviewAndDetailsAsync()
@@ -66,8 +67,12 @@ namespace Files.App.ViewModels.Previews
 
 		private async Task LoadPagesAsync(PdfDocument pdf)
 		{
-			// This fixes an issue where loading an absurdly large PDF would take to much RAM and eventually cause a crash
+			// Cap pages and render width so the first page shows quickly in the info pane.
 			var limit = Math.Clamp(pdf.PageCount, 0, Constants.PreviewPane.PDFPageLimit);
+			var renderOptions = new PdfPageRenderOptions
+			{
+				DestinationWidth = 960,
+			};
 
 			for (uint i = 0; i < limit; i++)
 			{
@@ -76,9 +81,9 @@ namespace Files.App.ViewModels.Previews
 					return;
 
 				using PdfPage page = pdf.GetPage(i);
-				await page.PreparePageAsync();
 				using InMemoryRandomAccessStream stream = new InMemoryRandomAccessStream();
-				await page.RenderToStreamAsync(stream);
+				// Skip PreparePageAsync — RenderToStreamAsync is enough for pane thumbnails.
+				await page.RenderToStreamAsync(stream, renderOptions);
 
 				await MainWindow.Instance.DispatcherQueue.EnqueueOrInvokeAsync(async () =>
 				{
@@ -94,6 +99,10 @@ namespace Files.App.ViewModels.Previews
 
 					++PageCount;
 				});
+
+				// Yield so the first page can paint before continuing.
+				if (i == 0)
+					await Task.Yield();
 			}
 
 			LoadingBarVisibility = Visibility.Collapsed;

@@ -332,6 +332,13 @@ namespace Files.App.ViewModels.UserControls
 				return (new ImagePreview(model), model.LoadAsync());
 			}
 
+			// Prefer the built-in PDF renderer (progressive pages) over the slow Shell preview handler.
+			if (FileExtensionHelpers.IsPdfFile(ext))
+			{
+				var model = new PDFPreviewViewModel(item);
+				return (new PDFPreview(model), model.LoadAsync());
+			}
+
 			if (FileExtensionHelpers.IsTextFile(ext))
 			{
 				var model = new TextPreviewViewModel(item);
