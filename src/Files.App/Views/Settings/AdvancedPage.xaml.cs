@@ -32,5 +32,11 @@ namespace Files.App.Views.Settings
 			if (ViewModel.SetAsOpenFileDialogCommand.CanExecute(e))
 				ViewModel.SetAsOpenFileDialogCommand.Execute(e);
 		}
+
+		private void ShowAssociationsPreview_Click(object sender, RoutedEventArgs e)
+		{
+			if (ViewModel.ShowAssociationsPreviewCommand.CanExecute(null))
+				ViewModel.ShowAssociationsPreviewCommand.Execute(null);
+		}
 	}
 }

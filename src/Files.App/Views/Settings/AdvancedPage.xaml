@@ -121,18 +121,42 @@
 				Text="{helpers:ResourceString Name=ExperimentalFeatureFlags}" />
 
 			<!--  Replace File Explorer  -->
-			<wctcontrols:SettingsCard
-				x:Name="SetAsDefaultSettingsBlockControl"
-				Description="{helpers:ResourceString Name=SettingsSetAsDefaultFileManagerDescription}"
-				Header="{helpers:ResourceString Name=SettingsSetAsDefaultFileManager}">
-				<wctcontrols:SettingsCard.HeaderIcon>
-					<FontIcon Glyph="&#xEC50;" />
-				</wctcontrols:SettingsCard.HeaderIcon>
-				<ToggleSwitch
-					AutomationProperties.Name="{helpers:ResourceString Name=SettingsSetAsDefaultFileManager}"
-					IsOn="{x:Bind ViewModel.IsSetAsDefaultFileManager, Mode=TwoWay}"
-					Toggled="SetAsDefaultExplorer_Toggled" />
-			</wctcontrols:SettingsCard>
+			<StackPanel Spacing="4">
+				<InfoBar
+					x:Name="AssociationsPreviewOnlyInfoBar"
+					x:Load="{x:Bind ViewModel.IsAssociationsPreviewOnly}"
+					IsClosable="False"
+					IsIconVisible="True"
+					IsOpen="True"
+					Message="{helpers:ResourceString Name=AssociationsPreviewOnlyInfoBar}"
+					Severity="Informational" />
+
+				<wctcontrols:SettingsCard
+					x:Name="SetAsDefaultSettingsBlockControl"
+					Description="{helpers:ResourceString Name=SettingsSetAsDefaultFileManagerDescription}"
+					Header="{helpers:ResourceString Name=SettingsSetAsDefaultFileManager}">
+					<wctcontrols:SettingsCard.HeaderIcon>
+						<FontIcon Glyph="&#xEC50;" />
+					</wctcontrols:SettingsCard.HeaderIcon>
+					<ToggleSwitch
+						AutomationProperties.Name="{helpers:ResourceString Name=SettingsSetAsDefaultFileManager}"
+						IsOn="{x:Bind ViewModel.IsSetAsDefaultFileManager, Mode=TwoWay}"
+						Toggled="SetAsDefaultExplorer_Toggled" />
+				</wctcontrols:SettingsCard>
+
+				<wctcontrols:SettingsCard
+					Command="{x:Bind ViewModel.ShowAssociationsPreviewCommand, Mode=OneWay}"
+					Header="{helpers:ResourceString Name=AssociationsPreviewViewButton}"
+					IsClickEnabled="True"
+					Click="ShowAssociationsPreview_Click">
+					<wctcontrols:SettingsCard.HeaderIcon>
+						<FontIcon Glyph="&#xE8FD;" />
+					</wctcontrols:SettingsCard.HeaderIcon>
+					<wctcontrols:SettingsCard.ActionIcon>
+						<FontIcon Glyph="&#xE8A7;" />
+					</wctcontrols:SettingsCard.ActionIcon>
+				</wctcontrols:SettingsCard>
+			</StackPanel>
 
 			<!--  Replace Open File Dialog  -->
 			<wctcontrols:SettingsCard

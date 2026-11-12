@@ -7,6 +7,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Data;
 using Microsoft.UI.Xaml.Media;
+using Windows.Foundation.Metadata;
 using Windows.System;
 
 namespace Files.App.Helpers
@@ -520,6 +521,64 @@ namespace Files.App.Helpers
 				SubtitleText = exception,
 				PrimaryButtonText = Strings.OK.GetLocalizedResource(),
 				DynamicButtons = DynamicDialogButtons.Primary
+			});
+
+			await dialog.TryShowAsync();
+		}
+
+		/// <summary>
+		/// Shows a read-only preview of handlers Files would affect as default file manager.
+		/// Does not write the registry.
+		/// </summary>
+		public static async Task ShowFor_AssociationsPreviewAsync(bool isOnboarding)
+		{
+			if (MainWindow.Instance?.Content?.XamlRoot is null)
+				return;
+
+			UIHelpers.CloseAllDialogs();
+
+			var items = await Associations.AssociationsPreviewService.BuildPreviewAsync();
+
+			var panel = new StackPanel { Spacing = 12, MinWidth = 360 };
+			foreach (var item in items)
+			{
+				panel.Children.Add(new TextBlock
+				{
+					Text = item.Title,
+					FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+					TextWrapping = TextWrapping.WrapWholeWords,
+				});
+				panel.Children.Add(new TextBlock
+				{
+					Text = item.CurrentHandler,
+					Opacity = 0.85,
+					TextWrapping = TextWrapping.WrapWholeWords,
+					IsTextSelectionEnabled = true,
+				});
+			}
+
+			var scroll = new ScrollViewer
+			{
+				Content = panel,
+				MaxHeight = 360,
+				HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+				VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+			};
+
+			var dialog = new DynamicDialog(new DynamicDialogViewModel()
+			{
+				TitleText = isOnboarding
+					? Strings.AssociationsPreviewOnboardingTitle.GetLocalizedResource()
+					: Strings.AssociationsPreviewTitle.GetLocalizedResource(),
+				SubtitleText = isOnboarding
+					? Strings.AssociationsPreviewOnboardingSubtitle.GetLocalizedResource()
+					: Strings.AssociationsPreviewSubtitle.GetLocalizedResource(),
+				DisplayControl = scroll,
+				PrimaryButtonText = Strings.AssociationsPreviewGotIt.GetLocalizedResource(),
+				CloseButtonText = isOnboarding
+					? Strings.AssociationsPreviewLater.GetLocalizedResource()
+					: Strings.Close.GetLocalizedResource(),
+				DynamicButtons = DynamicDialogButtons.Primary | DynamicDialogButtons.Cancel
 			});
 
 			await dialog.TryShowAsync();

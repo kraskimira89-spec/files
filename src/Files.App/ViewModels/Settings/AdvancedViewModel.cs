@@ -1,6 +1,7 @@
 // Copyright (c) Files Community
 // Licensed under the MIT License.
 
+using Files.App.Helpers.Associations;
 using Microsoft.Extensions.Logging;
 using Microsoft.Win32;
 using SevenZip;
@@ -29,7 +30,12 @@ namespace Files.App.ViewModels.Settings
 		public ICommand ImportSettingsCommand { get; }
 		public AsyncRelayCommand OpenFilesOnWindowsStartupCommand { get; }
 		public ICommand ClearThumbnailCacheCommand { get; }
+		public ICommand ShowAssociationsPreviewCommand { get; }
 
+		/// <summary>
+		/// When true, the Associations preview-only InfoBar is shown (apply disabled this stage).
+		/// </summary>
+		public bool IsAssociationsPreviewOnly => !AssociationsPreviewService.IsDefaultAssociationApplyEnabled;
 
 		public AdvancedViewModel()
 		{
@@ -42,6 +48,7 @@ namespace Files.App.ViewModels.Settings
 			ImportSettingsCommand = new AsyncRelayCommand(ImportSettingsAsync);
 			OpenFilesOnWindowsStartupCommand = new AsyncRelayCommand(OpenFilesOnWindowsStartupAsync);
 			ClearThumbnailCacheCommand = new AsyncRelayCommand(ClearThumbnailCacheAsync);
+			ShowAssociationsPreviewCommand = new AsyncRelayCommand(ShowAssociationsPreviewAsync);
 
 			_ = DetectOpenFilesAtStartupAsync();
 			_ = UpdateCacheSizeAsync();
@@ -62,6 +69,11 @@ namespace Files.App.ViewModels.Settings
 				OnPropertyChanged(e.SettingName);
 		}
 
+		private async Task ShowAssociationsPreviewAsync()
+		{
+			await DynamicDialogFactory.ShowFor_AssociationsPreviewAsync(isOnboarding: false);
+		}
+
 		private async Task SetAsDefaultExplorerAsync()
 		{
 			// Make sure IsSetAsDefaultFileManager is updated
@@ -69,6 +81,14 @@ namespace Files.App.ViewModels.Settings
 
 			if (IsSetAsDefaultFileManager == DetectIsSetAsDefaultFileManager())
 				return;
+
+			// Preview-only stage: show what would change, do not write registry / install launcher.
+			if (!AssociationsPreviewService.IsDefaultAssociationApplyEnabled)
+			{
+				await DynamicDialogFactory.ShowFor_AssociationsPreviewAsync(isOnboarding: false);
+				IsSetAsDefaultFileManager = DetectIsSetAsDefaultFileManager();
+				return;
+			}
 
 			var destFolder = Path.Combine(ApplicationData.Current.LocalFolder.Path, "FilesOpenDialog");
 			Directory.CreateDirectory(destFolder);

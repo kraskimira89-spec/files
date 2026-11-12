@@ -1959,7 +1959,46 @@
     <value>Third party libraries</value>
   </data>
   <data name="SettingsSetAsDefaultFileManagerDescription" xml:space="preserve">
-    <value>This option modifies the system registry and can have unexpected side effects on your device. Continue at your own risk.</value>
+    <value>Replaces Folder open/explore and Win+E with Files. Review affected handlers before applying. Applying registry changes is disabled in this preview build.</value>
+  </data>
+  <data name="AssociationsPreviewTitle" xml:space="preserve">
+    <value>Affected associations preview</value>
+  </data>
+  <data name="AssociationsPreviewSubtitle" xml:space="preserve">
+    <value>These are the handlers Files would replace as the default file manager. Nothing is changed until apply is enabled.</value>
+  </data>
+  <data name="AssociationsPreviewOnboardingTitle" xml:space="preserve">
+    <value>Default file manager preview</value>
+  </data>
+  <data name="AssociationsPreviewOnboardingSubtitle" xml:space="preserve">
+    <value>Files can become your default file manager for folders and listed archive types. This preview does not change your system yet.</value>
+  </data>
+  <data name="AssociationsPreviewViewButton" xml:space="preserve">
+    <value>View affected associations</value>
+  </data>
+  <data name="AssociationsPreviewOnlyInfoBar" xml:space="preserve">
+    <value>Applying “Set as default file manager” is disabled on this build. You can preview affected associations only.</value>
+  </data>
+  <data name="AssociationsPreviewItemFolderOpen" xml:space="preserve">
+    <value>Folder → Open</value>
+  </data>
+  <data name="AssociationsPreviewItemFolderExplore" xml:space="preserve">
+    <value>Folder → Explore</value>
+  </data>
+  <data name="AssociationsPreviewItemWinE" xml:space="preserve">
+    <value>Win+E (open new window)</value>
+  </data>
+  <data name="AssociationsPreviewItemArchive" xml:space="preserve">
+    <value>Archive type {0}</value>
+  </data>
+  <data name="AssociationsPreviewCurrentHandlerUnknown" xml:space="preserve">
+    <value>(unknown / not set)</value>
+  </data>
+  <data name="AssociationsPreviewGotIt" xml:space="preserve">
+    <value>Got it</value>
+  </data>
+  <data name="AssociationsPreviewLater" xml:space="preserve">
+    <value>Later</value>
   </data>
   <data name="ShowFlattenOptionsDescription" xml:space="preserve">
     <value>The flatten operations are permanent and not recommended. Continue at your own risk.</value>

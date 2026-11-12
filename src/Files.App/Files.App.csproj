@@ -30,6 +30,8 @@
         <RuntimeIdentifiers>win-x86;win-x64;win-arm64</RuntimeIdentifiers>
         <RuntimeIdentifier>win-$(Platform)</RuntimeIdentifier>
         <UseWinUI>true</UseWinUI>
+        <!-- Win10: DeploymentManager auto-init can crash with REGDB_E_CLASSNOTREG before Main. -->
+        <WindowsAppSdkDeploymentManagerInitialize>false</WindowsAppSdkDeploymentManagerInitialize>
         <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
         <CETCompat>false</CETCompat>
@@ -198,5 +200,21 @@
             <_FilesAppServerPackageFile Include="$(FilesAppServerPublishDir)**\*" Exclude="$(FilesAppServerPublishDir)**\*.winmd;$(FilesAppServerPublishDir)**\*.pdb" />
             <AppxPackagePayload Include="@(_FilesAppServerPackageFile)" TargetPath="Files.App.Server\%(RecursiveDir)%(Filename)%(Extension)" />
         </ItemGroup>
+    </Target>
+
+    <!-- Loose-file Debug register (Add-AppxPackage -Register) also needs Files.App.Server next to Files.exe. -->
+    <Target Name="CopyFilesAppServerToOutput" AfterTargets="Build">
+        <PropertyGroup>
+            <FilesAppServerPublishDir>$(MSBuildThisFileDirectory)..\Files.App.Server\bin\$(Platform)\$(Configuration)\$(TargetFramework)\win-$(Platform)\publish\</FilesAppServerPublishDir>
+            <FilesAppServerOutputDir>$(OutDir)Files.App.Server\</FilesAppServerOutputDir>
+        </PropertyGroup>
+
+        <MSBuild Projects="$(FilesAppServerProject)" Targets="Publish" Properties="Configuration=$(Configuration);Platform=$(Platform);PublishDir=$(FilesAppServerPublishDir)" Condition="!Exists('$(FilesAppServerPublishDir)Files.App.Server.exe')" />
+        <Error Condition="!Exists('$(FilesAppServerPublishDir)Files.App.Server.exe')" Text="Files.App.Server publish output was not found." />
+
+        <ItemGroup>
+            <_FilesAppServerOutputFile Include="$(FilesAppServerPublishDir)**\*" Exclude="$(FilesAppServerPublishDir)**\*.winmd;$(FilesAppServerPublishDir)**\*.pdb" />
+        </ItemGroup>
+        <Copy SourceFiles="@(_FilesAppServerOutputFile)" DestinationFiles="@(_FilesAppServerOutputFile->'$(FilesAppServerOutputDir)%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
     </Target>
 </Project>

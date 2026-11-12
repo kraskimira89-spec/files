@@ -203,10 +203,25 @@ namespace Files.App
 		{
 			try
 			{
-				var instance = AppInstance.GetInstances().FirstOrDefault(instance =>
-					!instance.IsCurrent && instance.Key.StartsWith("Files.Window.", StringComparison.Ordinal));
+				var instance = AppInstance.GetInstances().FirstOrDefault(candidate =>
+					!candidate.IsCurrent && candidate.Key.StartsWith("Files.Window.", StringComparison.Ordinal));
 				if (instance is null)
 					return false;
+
+				// AppLifecycle can keep keys for crashed windows; redirecting then exits with no UI.
+				const string keyPrefix = "Files.Window.";
+				if (instance.Key.StartsWith(keyPrefix, StringComparison.Ordinal) &&
+					int.TryParse(instance.Key.AsSpan(keyPrefix.Length), out var existingPid))
+				{
+					try
+					{
+						_ = System.Diagnostics.Process.GetProcessById(existingPid);
+					}
+					catch (ArgumentException)
+					{
+						return false;
+					}
+				}
 
 				instance.RedirectActivationToAsync(args).AsTask().GetAwaiter().GetResult();
 				return true;

@@ -1962,7 +1962,46 @@
     <value>Сторонние библиотеки</value>
   </data>
   <data name="SettingsSetAsDefaultFileManagerDescription" xml:space="preserve">
-    <value>Этот параметр изменяет реестр Windows и может иметь неожиданные побочные эффекты на вашем устройстве. Продолжайте на свой страх и риск.</value>
+    <value>Заменяет открытие папок и Win+E на Files. Сначала просмотрите затронутые ассоциации. Применение изменений реестра в этой сборке отключено.</value>
+  </data>
+  <data name="AssociationsPreviewTitle" xml:space="preserve">
+    <value>Просмотр затронутых ассоциаций</value>
+  </data>
+  <data name="AssociationsPreviewSubtitle" xml:space="preserve">
+    <value>Обработчики, которые Files заменил бы как проводник по умолчанию. Пока ничего не меняется.</value>
+  </data>
+  <data name="AssociationsPreviewOnboardingTitle" xml:space="preserve">
+    <value>Проводник по умолчанию — предпросмотр</value>
+  </data>
+  <data name="AssociationsPreviewOnboardingSubtitle" xml:space="preserve">
+    <value>Files может стать проводником по умолчанию для папок и перечисленных архивов. Этот предпросмотр ещё не меняет систему.</value>
+  </data>
+  <data name="AssociationsPreviewViewButton" xml:space="preserve">
+    <value>Просмотр затронутых типов</value>
+  </data>
+  <data name="AssociationsPreviewOnlyInfoBar" xml:space="preserve">
+    <value>Применение «Сделать Files проводником по умолчанию» в этой сборке отключено. Доступен только просмотр ассоциаций.</value>
+  </data>
+  <data name="AssociationsPreviewItemFolderOpen" xml:space="preserve">
+    <value>Папка → Открыть</value>
+  </data>
+  <data name="AssociationsPreviewItemFolderExplore" xml:space="preserve">
+    <value>Папка → Обзор</value>
+  </data>
+  <data name="AssociationsPreviewItemWinE" xml:space="preserve">
+    <value>Win+E (новое окно)</value>
+  </data>
+  <data name="AssociationsPreviewItemArchive" xml:space="preserve">
+    <value>Архив {0}</value>
+  </data>
+  <data name="AssociationsPreviewCurrentHandlerUnknown" xml:space="preserve">
+    <value>(неизвестно / не задано)</value>
+  </data>
+  <data name="AssociationsPreviewGotIt" xml:space="preserve">
+    <value>Понятно</value>
+  </data>
+  <data name="AssociationsPreviewLater" xml:space="preserve">
+    <value>Позже</value>
   </data>
   <data name="ShowFlattenOptionsDescription" xml:space="preserve">
     <value>Операции с выравниванием структуры являются постоянными и не рекомендуются. Активируйте на свой страх и риск.</value>
