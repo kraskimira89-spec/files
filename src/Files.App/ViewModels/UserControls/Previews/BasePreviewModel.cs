@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 using System.IO;
+using System.Text;
 using Files.App.ViewModels.Properties;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media.Imaging;
@@ -42,8 +43,88 @@ namespace Files.App.ViewModels.Previews
 			return temp.LoadAsync();
 		}
 
-		public static Task<string> ReadFileAsTextAsync(BaseStorageFile file, int maxLength = 10 * 1024 * 1024)
-			=> file.ReadTextAsync(maxLength);
+		/// <summary>
+		/// Reads preview text with BOM / UTF-8 / Windows-1251 detection so Cyrillic files without a BOM render correctly.
+		/// </summary>
+		public static async Task<string> ReadFileAsTextAsync(BaseStorageFile file, int maxLength = 10 * 1024 * 1024)
+		{
+			using var inputStream = await file.OpenReadAsync()
+				?? throw new IOException("The file could not be opened for reading.");
+			await using var stream = inputStream.AsStreamForRead();
+
+			// Cap byte reads; UTF-8 worst-case is 4 bytes per char for the character limit.
+			var byteLimit = maxLength < 0 ? int.MaxValue : Math.Min(checked(maxLength * 4), 32 * 1024 * 1024);
+			using var memory = new MemoryStream(Math.Min(byteLimit, 64 * 1024));
+			var buffer = new byte[8192];
+			while (memory.Length < byteLimit)
+			{
+				var toRead = (int)Math.Min(buffer.Length, byteLimit - memory.Length);
+				var read = await stream.ReadAsync(buffer.AsMemory(0, toRead));
+				if (read <= 0)
+					break;
+
+				memory.Write(buffer, 0, read);
+			}
+
+			var bytes = memory.ToArray();
+			if (bytes.Length == 0)
+				return string.Empty;
+
+			var encoding = DetectPreviewTextEncoding(bytes);
+			var text = encoding.GetString(bytes);
+			if (maxLength >= 0 && text.Length > maxLength)
+				return text[..maxLength];
+
+			return text;
+		}
+
+		private static Encoding DetectPreviewTextEncoding(ReadOnlySpan<byte> bytes)
+		{
+			if (bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF)
+				return new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: false);
+
+			if (bytes.Length >= 2 && bytes[0] == 0xFF && bytes[1] == 0xFE)
+				return Encoding.Unicode;
+
+			if (bytes.Length >= 2 && bytes[0] == 0xFE && bytes[1] == 0xFF)
+				return Encoding.BigEndianUnicode;
+
+			var utf8Strict = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
+			try
+			{
+				_ = utf8Strict.GetString(bytes);
+				return new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: false);
+			}
+			catch (DecoderFallbackException)
+			{
+				// Not valid UTF-8 — common for Russian Windows-1251 text without a BOM.
+			}
+
+			var utf8Loose = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: false);
+			var windows1251 = Encoding.GetEncoding(1251);
+			var asUtf8 = utf8Loose.GetString(bytes);
+			var as1251 = windows1251.GetString(bytes);
+
+			return ScoreDecodedPreviewText(as1251) > ScoreDecodedPreviewText(asUtf8)
+				? windows1251
+				: utf8Loose;
+		}
+
+		private static int ScoreDecodedPreviewText(string text)
+		{
+			var score = 0;
+			foreach (var ch in text)
+			{
+				if (ch == '\uFFFD')
+					score -= 40;
+				else if (ch is >= '\u0400' and <= '\u04FF')
+					score += 3; // Cyrillic
+				else if (char.IsControl(ch) && ch is not ('\r' or '\n' or '\t'))
+					score -= 4;
+			}
+
+			return score;
+		}
 
 		/// <summary>
 		/// Call this function when you are ready to load the preview and details.

@@ -12,7 +12,9 @@
 	<Border>
 		<ScrollViewer>
 
-			<RichTextBlock IsTextSelectionEnabled="True">
+			<RichTextBlock
+				FontFamily="Segoe UI"
+				IsTextSelectionEnabled="True">
 				<Paragraph>
 					<Run Text="{x:Bind ViewModel.TextValue, Mode=OneWay}" />
 				</Paragraph>
