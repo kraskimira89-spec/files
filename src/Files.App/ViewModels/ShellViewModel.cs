@@ -2493,6 +2493,7 @@ namespace Files.App.ViewModels
 				{
 					await Task.Run(async () =>
 					{
+						var enumSw = Stopwatch.StartNew();
 						List<ListedItem> fileList = await Win32StorageEnumerator.ListEntries(path, hFile, findData, cancellationToken, -1, GetPreloadIconSize(), intermediateAction: async (intermediateList) =>
 						{
 							filesAndFolders.AddRange(intermediateList);
@@ -2503,11 +2504,14 @@ namespace Files.App.ViewModels
 
 							await ApplyFilesAndFoldersChangesAsync();
 						});
+						App.Logger.LogInformation("Listing: {Count} items enumerated in {EnumMs} ms", fileList.Count, enumSw.ElapsedMilliseconds);
 
 						filesAndFolders.AddRange(fileList);
 
+						var sortApplySw = Stopwatch.StartNew();
 						await OrderFilesAndFoldersAsync();
 						await ApplyFilesAndFoldersChangesAsync();
+						App.Logger.LogInformation("Listing: final sort/apply in {SortApplyMs} ms", sortApplySw.ElapsedMilliseconds);
 						// Not awaited here: with Low priority these don't run until the UI thread goes idle
 						// after the final list update, which would delay load completion and watcher setup.
 						// The desktop.ini task is awaited before applying the adaptive layout, which reads DesktopIni.
@@ -2516,6 +2520,7 @@ namespace Files.App.ViewModels
 					});
 
 					// Cache the resolved folder so the post-enum switch reuses it.
+					var postEnumSw = Stopwatch.StartNew();
 					currentStorageFolder ??= await FilesystemTasks.Wrap(() => StorageFileExtensions.DangerousGetFolderWithPathFromPathAsync(path));
 					rootFolder ??= currentStorageFolder?.Item;
 					if (rootFolder is not null)
@@ -2529,6 +2534,7 @@ namespace Files.App.ViewModels
 							currentFolder.SyncStatusUI = CloudDriveSyncStatusUI.FromCloudDriveSyncStatus(enumeratedCloudSyncStatus.Value);
 						}
 					}
+					App.Logger.LogInformation("Listing: post-enumeration folder/cache/sync in {PostEnumMs} ms", postEnumSw.ElapsedMilliseconds);
 
 					return 0;
 				}
