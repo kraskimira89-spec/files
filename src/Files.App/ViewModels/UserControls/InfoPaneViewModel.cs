@@ -175,21 +175,20 @@ namespace Files.App.ViewModels.UserControls
 			{
 				case nameof(IContentPageContext.Folder):
 				case nameof(IContentPageContext.SelectedItem):
-
-					ListedItem? tempSelectedItem = null;
-					if (contentPageContext.SelectedItems.Count == 1)
-						tempSelectedItem = contentPageContext.SelectedItems.First();
-
-					// Don't update preview pane when the selected item changes too frequently
-					const int delayBeforeUpdatingPreviewPane = 100;
-					await Task.Delay(delayBeforeUpdatingPreviewPane);
-					if (tempSelectedItem is not null && !tempSelectedItem.Equals(contentPageContext.SelectedItem))
-						return;
-
-					SelectedItem = tempSelectedItem;
-
 					try
 					{
+						ListedItem? tempSelectedItem = null;
+						if (contentPageContext.SelectedItems.Count == 1)
+							tempSelectedItem = contentPageContext.SelectedItems.First();
+
+						// Don't update preview pane when the selected item changes too frequently
+						const int delayBeforeUpdatingPreviewPane = 100;
+						await Task.Delay(delayBeforeUpdatingPreviewPane);
+						if (tempSelectedItem is not null && !tempSelectedItem.Equals(contentPageContext.SelectedItem))
+							return;
+
+						SelectedItem = tempSelectedItem;
+
 						if (!App.AppModel.IsMainWindowClosed)
 						{
 							var shouldUpdatePreview = ((MainWindow.Instance.Content as Frame)?.Content as MainPage)?.ViewModel.ShouldPreviewPaneBeActive;
@@ -201,7 +200,6 @@ namespace Files.App.ViewModels.UserControls
 					{
 						// Handle exception in case WinUI Windows is closed
 						// (see https://github.com/files-community/Files/issues/15599)
-
 						App.Logger.LogWarning(ex, ex.Message);
 					}
 
