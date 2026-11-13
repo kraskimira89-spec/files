@@ -2328,6 +2328,7 @@ namespace Files.App.ViewModels
 			int errorCode = 0;
 			if (!enumFromStorageFolder)
 			{
+				var handleSw = Stopwatch.StartNew();
 				(hFile, findData, errorCode) = await Task.Run(() =>
 				{
 					var hFileTsk = FindFirstFileExFromAppSafe(
@@ -2341,6 +2342,7 @@ namespace Files.App.ViewModels
 					return (hFileTsk, findDataTsk, hFileTsk.IsInvalid ? Marshal.GetLastWin32Error() : 0);
 				})
 				.WithTimeoutAsync(TimeSpan.FromSeconds(5));
+				App.Logger.LogInformation("Listing: directory handle opened in {HandleMs} ms", handleSw.ElapsedMilliseconds);
 			}
 
 			if (!enumFromStorageFolder && hFile is not null && !hFile.IsInvalid)
