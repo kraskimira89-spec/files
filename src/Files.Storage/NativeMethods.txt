@@ -156,6 +156,11 @@ RegNotifyChangeKeyValue
 RegQueryInfoKey
 ShowWindow
 PostMessage
+GetMessage
+TranslateMessage
+DispatchMessage
+PostQuitMessage
+MSG
 UnregisterClass
 NIN_SELECT
 RoRegisterActivationFactories
