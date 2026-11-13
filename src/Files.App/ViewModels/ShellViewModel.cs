@@ -2253,7 +2253,7 @@ namespace Files.App.ViewModels
 			}
 
 			stopwatch.Stop();
-			Debug.WriteLine($"Loading of items in {path} completed in {stopwatch.ElapsedMilliseconds} milliseconds.\n");
+			App.Logger.LogInformation("Loading of items completed in {Elapsed} ms: {Path}", stopwatch.ElapsedMilliseconds, LogPathHelper.RedactPath(path));
 		}
 
 		public void CloseWatcher()
@@ -3580,8 +3580,6 @@ namespace Files.App.ViewModels
 
 		public void UpdateDateDisplay()
 		{
-			App.Logger.LogDebug($"UpdateDateDisplay: itemCount={filesAndFolders.Count}");
-
 			foreach (var item in filesAndFolders)
 			{
 				if (item.IsRealChanges)
