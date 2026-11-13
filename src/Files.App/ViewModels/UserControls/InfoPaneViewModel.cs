@@ -502,26 +502,33 @@ namespace Files.App.ViewModels.UserControls
 		[DynamicWindowsRuntimeCast(typeof(Frame))]
 		private async void PreviewSettingsService_OnPropertyChangedEvent(object? sender, PropertyChangedEventArgs e)
 		{
-			if (e.PropertyName is nameof(infoPaneSettingsService.SelectedTab))
+			try
 			{
-				OnPropertyChanged(nameof(SelectedTab));
-
-				// The preview will need refreshing as the file details won't be accurate
-				var shouldUpdatePreview = ((MainWindow.Instance.Content as Frame)?.Content as MainPage)?.ViewModel.ShouldPreviewPaneBeActive;
-				if (shouldUpdatePreview == true)
-					await UpdateSelectedItemPreviewAsync();
-			}
-			else if (e.PropertyName is nameof(infoPaneSettingsService.IsInfoPaneEnabled))
-			{
-				var newEnablingStatus = infoPaneSettingsService.IsInfoPaneEnabled;
-				if (isEnabled != newEnablingStatus)
+				if (e.PropertyName is nameof(infoPaneSettingsService.SelectedTab))
 				{
-					isEnabled = newEnablingStatus;
-					if (!isEnabled)
-						UnloadPreview();
+					OnPropertyChanged(nameof(SelectedTab));
 
-					OnPropertyChanged(nameof(IsEnabled));
+					// The preview will need refreshing as the file details won't be accurate
+					var shouldUpdatePreview = ((MainWindow.Instance.Content as Frame)?.Content as MainPage)?.ViewModel.ShouldPreviewPaneBeActive;
+					if (shouldUpdatePreview == true)
+						await UpdateSelectedItemPreviewAsync();
 				}
+				else if (e.PropertyName is nameof(infoPaneSettingsService.IsInfoPaneEnabled))
+				{
+					var newEnablingStatus = infoPaneSettingsService.IsInfoPaneEnabled;
+					if (isEnabled != newEnablingStatus)
+					{
+						isEnabled = newEnablingStatus;
+						if (!isEnabled)
+							UnloadPreview();
+
+						OnPropertyChanged(nameof(IsEnabled));
+					}
+				}
+			}
+			catch (Exception ex)
+			{
+				App.Logger.LogWarning(ex, ex.Message);
 			}
 		}
 

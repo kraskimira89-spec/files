@@ -2790,12 +2790,19 @@ namespace Files.App.ViewModels
 
 		private async void DirectoryWatcher_Changed(object sender, FileSystemEventArgs e)
 		{
-			Debug.WriteLine($"Directory watcher event: {e.ChangeType}, {e.FullPath}");
-
-			await dispatcherQueue.EnqueueOrInvokeAsync(() =>
+			try
 			{
-				RefreshItems(null);
-			});
+				Debug.WriteLine($"Directory watcher event: {e.ChangeType}, {e.FullPath}");
+
+				await dispatcherQueue.EnqueueOrInvokeAsync(() =>
+				{
+					RefreshItems(null);
+				});
+			}
+			catch (Exception ex)
+			{
+				App.Logger.LogWarning(ex, ex.Message);
+			}
 		}
 
 		private async void ItemQueryResult_ContentsChanged(IStorageQueryResultBase sender, object args)
