@@ -28,84 +28,98 @@ namespace Files.App.ViewModels.Previews
 		private async Task LoadPreviewAndDetailsAsync()
 		{
 			var itemPath = Item.ItemPath!;
+			var isDriveRoot = Item.IsDriveRoot || infoPaneViewModel?.SelectedDriveItem is not null;
 
-			var resolveSw = Stopwatch.StartNew();
-			BaseStorageFolder? folder;
-			try
+			// Load folder, icon, properties and git info off the UI thread so the preview does
+			// not compete with the folder listing for the UI thread.
+			var load = await Task.Run(async () =>
 			{
-				// Fast path for ordinary local folders (avoids DriveHelpers root resolution).
-				folder = new SystemStorageFolder(await StorageFolder.GetFolderFromPathAsync(itemPath));
-			}
-			catch
-			{
-				var rootItem = await FilesystemTasks.WrapNullable(() => DriveHelpers.GetRootFromPathAsync(itemPath));
-				folder = await StorageFileExtensions.DangerousGetFolderFromPathAsync(itemPath, rootItem.Result);
-			}
-			var resolveMs = resolveSw.ElapsedMilliseconds;
+				var resolveSw = Stopwatch.StartNew();
+				BaseStorageFolder? folder;
+				try
+				{
+					// Fast path for ordinary local folders (avoids DriveHelpers root resolution).
+					folder = new SystemStorageFolder(await StorageFolder.GetFolderFromPathAsync(itemPath));
+				}
+				catch
+				{
+					var rootItem = await FilesystemTasks.WrapNullable(() => DriveHelpers.GetRootFromPathAsync(itemPath));
+					folder = await StorageFileExtensions.DangerousGetFolderFromPathAsync(itemPath, rootItem.Result);
+				}
+				var resolveMs = resolveSw.ElapsedMilliseconds;
 
-			if (folder is null)
-				throw new InvalidOperationException("The preview folder could not be opened.");
+				if (folder is null)
+					throw new InvalidOperationException("The preview folder could not be opened.");
 
-			Folder = folder;
+				var iconSw = Stopwatch.StartNew();
+				var iconBytes = await FileThumbnailHelper.GetIconAsync(itemPath, Constants.ShellIconSizes.Jumbo, true, IconOptions.None);
+				var iconMs = iconSw.ElapsedMilliseconds;
 
-			var iconSw = Stopwatch.StartNew();
-			var result = await FileThumbnailHelper.GetIconAsync(
-				Item.ItemPath,
-				Constants.ShellIconSizes.Jumbo,
-				true,
-				IconOptions.None);
-			var iconMs = iconSw.ElapsedMilliseconds;
+				DateTimeOffset? dateModified = null;
+				DateTimeOffset? dateCreated = null;
+				var gitDetails = new List<FileProperty>();
+				long propsMs = 0;
+				long gitMs = 0;
 
+				if (!isDriveRoot)
+				{
+					var propsSw = Stopwatch.StartNew();
+					var info = await folder.GetBasicPropertiesAsync();
+					propsMs = propsSw.ElapsedMilliseconds;
+					dateModified = info.DateModified;
+					dateCreated = info.DateCreated;
+
+					var gitSw = Stopwatch.StartNew();
+					if (GitHelpers.IsRepositoryEx(itemPath, out var repoPath) && !string.IsNullOrEmpty(repoPath))
+					{
+						var gitDirectory = GitHelpers.GetGitRepositoryPath(folder.Path, Path.GetPathRoot(folder.Path));
+						var headName = (await GitHelpers.GetRepositoryHead(gitDirectory))?.Name ?? string.Empty;
+						var repositoryName = GitHelpers.GetOriginRepositoryName(gitDirectory);
+
+						if (!string.IsNullOrEmpty(gitDirectory))
+							gitDetails.Add(GetFileProperty("GitOriginRepositoryName", repositoryName));
+						if (!string.IsNullOrWhiteSpace(headName))
+							gitDetails.Add(GetFileProperty("GitCurrentBranch", headName));
+					}
+					gitMs = gitSw.ElapsedMilliseconds;
+				}
+
+				return (folder, iconBytes, dateModified, dateCreated, gitDetails, resolveMs, iconMs, propsMs, gitMs);
+			});
+
+			// Convert the icon and publish the details on the UI thread.
 			var bitmapSw = Stopwatch.StartNew();
-			if (result is not null)
-				Thumbnail = await result.ToBitmapAsync();
+			if (load.iconBytes is not null)
+				Thumbnail = await load.iconBytes.ToBitmapAsync();
 			var bitmapMs = bitmapSw.ElapsedMilliseconds;
 
-			// If the selected item is the root of a drive (e.g. "C:\") or a cloud drive,
-			// we do not need to load the properties below, since they will not be shown.
-			// Drive properties will be obtained through the DrivesViewModel service.
-			if (Item.IsDriveRoot || infoPaneViewModel?.SelectedDriveItem is not null)
+			Folder = load.folder;
+
+			if (isDriveRoot)
 			{
-				App.Logger.LogDebug("Preview.Folder: path={Path}, resolve={ResolveMs}ms, icon={IconMs}ms, bitmap={BitmapMs}ms", LogPathHelper.RedactPath(Item.ItemPath), resolveMs, iconMs, bitmapMs);
+				App.Logger.LogDebug("Preview.Folder: path={Path}, resolve={ResolveMs}ms, icon={IconMs}ms, bitmap={BitmapMs}ms", LogPathHelper.RedactPath(itemPath), load.resolveMs, load.iconMs, bitmapMs);
 				return;
 			}
-
-			var propsSw = Stopwatch.StartNew();
-			var info = await folder.GetBasicPropertiesAsync();
-			var propsMs = propsSw.ElapsedMilliseconds;
 
 			Item.FileDetails =
 			[
 				GetFileProperty("PropertyItemCount", infoPaneViewModel?.DirectoryItemCount),
-				GetFileProperty("PropertyDateModified", info.DateModified),
-				GetFileProperty("PropertyDateCreated", info.DateCreated),
-				GetFileProperty("PropertyParsingPath", folder.Path),
+				GetFileProperty("PropertyDateModified", load.dateModified),
+				GetFileProperty("PropertyDateCreated", load.dateCreated),
+				GetFileProperty("PropertyParsingPath", load.folder.Path),
 			];
 
-			var gitSw = Stopwatch.StartNew();
-			if (GitHelpers.IsRepositoryEx(Item.ItemPath, out var repoPath) &&
-				!string.IsNullOrEmpty(repoPath))
-			{
-				var gitDirectory = GitHelpers.GetGitRepositoryPath(folder.Path, Path.GetPathRoot(folder.Path));
-				var headName = (await GitHelpers.GetRepositoryHead(gitDirectory))?.Name ?? string.Empty;
-				var repositoryName = GitHelpers.GetOriginRepositoryName(gitDirectory);
-
-				if (!string.IsNullOrEmpty(gitDirectory))
-					Item.FileDetails.Add(GetFileProperty("GitOriginRepositoryName", repositoryName));
-
-				if (!string.IsNullOrWhiteSpace(headName))
-					Item.FileDetails.Add(GetFileProperty("GitCurrentBranch", headName));
-			}
-			var gitMs = gitSw.ElapsedMilliseconds;
+			foreach (var detail in load.gitDetails)
+				Item.FileDetails.Add(detail);
 
 			App.Logger.LogDebug(
 				"Preview.Folder: path={Path}, resolve={ResolveMs}ms, icon={IconMs}ms, bitmap={BitmapMs}ms, properties={PropertiesMs}ms, git={GitMs}ms",
-				LogPathHelper.RedactPath(Item.ItemPath),
-				resolveMs,
-				iconMs,
+				LogPathHelper.RedactPath(itemPath),
+				load.resolveMs,
+				load.iconMs,
 				bitmapMs,
-				propsMs,
-				gitMs);
+				load.propsMs,
+				load.gitMs);
 		}
 
 		private static FileProperty GetFileProperty(string nameResource, object? value)
