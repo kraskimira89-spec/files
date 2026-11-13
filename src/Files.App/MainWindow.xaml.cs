@@ -53,12 +53,14 @@ namespace Files.App
 
 		internal async Task<bool> ActivateWithBackdropAsync()
 		{
+			var sw = Stopwatch.StartNew();
 			var rootFrame = EnsureWindowIsInitialized();
 			if (rootFrame is null)
 				return false;
 
 			// Submit the initial content and backdrop before the window's normal show animation.
 			await CompositionTarget.GetCompositorForCurrentThread().RequestCommitAsync();
+			App.Logger.LogInformation("Startup: backdrop committed after {Elapsed} ms", sw.ElapsedMilliseconds);
 
 			var firstFrame = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 			CompositionTarget.Rendered += OnRendered;
@@ -66,8 +68,11 @@ namespace Files.App
 			try
 			{
 				Activate();
+				App.Logger.LogInformation("Startup: window activated after {Elapsed} ms", sw.ElapsedMilliseconds);
 				// Let the initial content paint before starting the remaining initialization.
-				return await firstFrame.Task;
+				var result = await firstFrame.Task;
+				App.Logger.LogInformation("Startup: first frame rendered after {Elapsed} ms", sw.ElapsedMilliseconds);
+				return result;
 			}
 			finally
 			{
@@ -306,16 +311,20 @@ namespace Files.App
 
 					// Place the frame in the current Window
 					Instance.Content = rootFrame;
+					var themeResSw = Stopwatch.StartNew();
 					Ioc.Default.GetRequiredService<IAppThemeModeService>().SetAppThemeMode(this, callThemeModeChangedEvent: false);
 					Ioc.Default.GetRequiredService<IResourcesService>().LoadAppResources(Ioc.Default.GetRequiredService<IAppearanceSettingsService>());
+					App.Logger.LogInformation("Startup: theme and resources loaded after {Elapsed} ms", themeResSw.ElapsedMilliseconds);
 				}
 
 				if (SystemBackdrop is null)
 				{
 					// Initialize the active material directly instead of transitioning from its inactive fallback.
+					var backdropSw = Stopwatch.StartNew();
 					var backdrop = new AppSystemBackdrop();
 					backdrop.SetInputActive(true);
 					SystemBackdrop = backdrop;
+					App.Logger.LogInformation("Startup: backdrop initialized after {Elapsed} ms", backdropSw.ElapsedMilliseconds);
 				}
 
 				return rootFrame;
