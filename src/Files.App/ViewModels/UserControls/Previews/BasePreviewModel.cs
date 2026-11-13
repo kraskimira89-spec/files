@@ -254,7 +254,7 @@ namespace Files.App.ViewModels.Previews
 				IconOptions.None);
 
 			if (result is not null)
-				await MainWindow.Instance.DispatcherQueue.EnqueueOrInvokeAsync(async () => FileImage = await result.ToBitmapAsync());
+				await MainWindow.Instance.DispatcherQueue.EnqueueOrInvokeAsync(async () => FileImage = await result.ToBitmapAsync(Constants.ShellIconSizes.Jumbo));
 			else
 				FileImage ??= await MainWindow.Instance.DispatcherQueue.EnqueueOrInvokeAsync(() => new BitmapImage());
 

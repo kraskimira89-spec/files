@@ -90,7 +90,7 @@ namespace Files.App.ViewModels.Previews
 			// Convert the icon and publish the details on the UI thread.
 			var bitmapSw = Stopwatch.StartNew();
 			if (load.iconBytes is not null)
-				Thumbnail = await load.iconBytes.ToBitmapAsync();
+				Thumbnail = await load.iconBytes.ToBitmapAsync(Constants.ShellIconSizes.Jumbo);
 			var bitmapMs = bitmapSw.ElapsedMilliseconds;
 
 			Folder = load.folder;

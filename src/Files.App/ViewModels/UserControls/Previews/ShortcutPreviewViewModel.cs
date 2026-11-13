@@ -45,7 +45,7 @@ namespace Files.App.ViewModels.Previews
 				IconOptions.None);
 
 			if (result is not null)
-				FileImage = await result.ToBitmapAsync();
+				FileImage = await result.ToBitmapAsync(Constants.ShellIconSizes.Jumbo);
 		}
 	}
 }
