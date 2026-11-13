@@ -280,7 +280,13 @@ namespace Files.App.Helpers
 					.AddDebug()
 					.AddProvider(fileLoggerProvider)
 					.AddProvider(new SentryLoggerProvider())
-					.SetMinimumLevel(LogLevel.Information));
+					.SetMinimumLevel(
+#if DEBUG
+						LogLevel.Debug
+#else
+						LogLevel.Information
+#endif
+						));
 
 			services
 					// Settings services
