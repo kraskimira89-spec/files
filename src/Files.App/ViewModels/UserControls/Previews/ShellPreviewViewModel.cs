@@ -121,7 +121,11 @@ namespace Files.App.ViewModels.Previews
 				}
 				catch
 				{
-					UnloadPreview();
+					// Do not call UnloadPreview during WM_CREATE: _hWnd is not assigned yet and the
+					// window is still being created. Dispose the handler and fail the window creation.
+					_previewHandler?.Dispose();
+					_previewHandler = null;
+					return new LRESULT(-1);
 				}
 			}
 			else if (msg is PInvoke.WM_DESTROY)
@@ -180,6 +184,12 @@ namespace Files.App.ViewModels.Previews
 					new(parent),
 					HMENU.Null,
 					hInst);
+			}
+
+			if (_hWnd == HWND.Null)
+			{
+				UnloadPreview();
+				return;
 			}
 
 			_ = ChildWindowToXaml(parent, presenter);
