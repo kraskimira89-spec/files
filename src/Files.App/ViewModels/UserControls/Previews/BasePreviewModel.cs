@@ -1,11 +1,14 @@
 // Copyright (c) Files Community
 // Licensed under the MIT License.
 
+using System.Diagnostics;
 using System.IO;
 using System.Text;
 using Files.App.ViewModels.Properties;
+using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media.Imaging;
+using Windows.Storage;
 
 namespace Files.App.ViewModels.Previews
 {
@@ -78,6 +81,42 @@ namespace Files.App.ViewModels.Previews
 			return text;
 		}
 
+		/// <summary>
+		/// Counts lines (same as <c>Split('\n').Length</c>) and optionally words
+		/// (same as <c>Split([' ', '\n'], RemoveEmptyEntries).Length</c>) in one pass.
+		/// </summary>
+		protected static (int LineCount, int WordCount) CountPreviewTextStats(string text, bool countWords)
+		{
+			var lineCount = 1;
+			var wordCount = 0;
+			var inWord = false;
+
+			foreach (var ch in text)
+			{
+				if (ch == '\n')
+				{
+					lineCount++;
+					inWord = false;
+					continue;
+				}
+
+				if (!countWords)
+					continue;
+
+				if (ch == ' ')
+				{
+					inWord = false;
+				}
+				else if (!inWord)
+				{
+					inWord = true;
+					wordCount++;
+				}
+			}
+
+			return (lineCount, wordCount);
+		}
+
 		private static Encoding DetectPreviewTextEncoding(ReadOnlySpan<byte> bytes)
 		{
 			if (bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF)
@@ -134,28 +173,62 @@ namespace Files.App.ViewModels.Previews
 		public virtual async Task LoadAsync()
 		{
 			List<FileProperty> detailsFull = [];
+			var totalSw = Stopwatch.StartNew();
+			long resolveMs = 0;
+			long contentMs = 0;
+			long propertiesMs = 0;
 
 			if (Item.ItemFile is null)
 			{
+				var resolveSw = Stopwatch.StartNew();
 				var itemPath = Item.ItemPath!;
-				var rootItem = await FilesystemTasks.WrapNullable(() => DriveHelpers.GetRootFromPathAsync(itemPath));
-				Item.ItemFile = await StorageFileExtensions.DangerousGetFileFromPathAsync(itemPath, rootItem.Result);
+				try
+				{
+					// Fast path for ordinary local files (avoids DriveHelpers root resolution).
+					Item.ItemFile = new SystemStorageFile(await StorageFile.GetFileFromPathAsync(itemPath));
+				}
+				catch
+				{
+					var rootItem = await FilesystemTasks.WrapNullable(() => DriveHelpers.GetRootFromPathAsync(itemPath));
+					Item.ItemFile = await StorageFileExtensions.DangerousGetFileFromPathAsync(itemPath, rootItem.Result);
+				}
+
+				resolveMs = resolveSw.ElapsedMilliseconds;
 			}
 
 			await Task.Run(async () =>
 			{
-				DetailsFromPreview = await LoadPreviewAndDetailsAsync();
+				var contentSw = Stopwatch.StartNew();
+				var contentTask = LoadPreviewAndDetailsAsync();
+
+				Task<List<FileProperty>?>? propertiesTask = null;
 				if (userSettingsService.InfoPaneSettingsService.SelectedTab == InfoPaneTabs.Details)
+					propertiesTask = GetSystemFilePropertiesAsync();
+
+				DetailsFromPreview = await contentTask;
+				contentMs = contentSw.ElapsedMilliseconds;
+
+				if (propertiesTask is not null)
 				{
 					// Add the details from the preview function, then the system file properties
 					DetailsFromPreview?.ForEach(i => detailsFull.Add(i));
-					List<FileProperty>? props = await GetSystemFilePropertiesAsync();
+					var propertiesSw = Stopwatch.StartNew();
+					List<FileProperty>? props = await propertiesTask;
+					propertiesMs = propertiesSw.ElapsedMilliseconds;
 					if (props is not null)
 						detailsFull.AddRange(props);
 				}
 			});
 
 			Item.FileDetails = new System.Collections.ObjectModel.ObservableCollection<FileProperty>(detailsFull);
+
+			App.Logger.LogDebug(
+				"Preview.LoadAsync: path={Path}, resolve={ResolveMs}ms, content={ContentMs}ms, properties={PropertiesMs}ms, total={TotalMs}ms",
+				LogPathHelper.RedactPath(Item.ItemPath),
+				resolveMs,
+				contentMs,
+				propertiesMs,
+				totalSw.ElapsedMilliseconds);
 		}
 
 		/// <summary>
@@ -167,6 +240,13 @@ namespace Files.App.ViewModels.Previews
 		/// <returns>A list of details</returns>
 		public async virtual Task<List<FileProperty>> LoadPreviewAndDetailsAsync()
 		{
+			var iconSw = Stopwatch.StartNew();
+
+			// First paint from the list thumbnail immediately, then fetch the Jumbo icon and swap it in.
+			var reusedListImage = Item.FileImage is not null;
+			if (reusedListImage)
+				await MainWindow.Instance.DispatcherQueue.EnqueueOrInvokeAsync(() => FileImage ??= Item.FileImage);
+
 			var result = await FileThumbnailHelper.GetIconAsync(
 				Item.ItemPath,
 				Constants.ShellIconSizes.Jumbo,
@@ -177,6 +257,12 @@ namespace Files.App.ViewModels.Previews
 				await MainWindow.Instance.DispatcherQueue.EnqueueOrInvokeAsync(async () => FileImage = await result.ToBitmapAsync());
 			else
 				FileImage ??= await MainWindow.Instance.DispatcherQueue.EnqueueOrInvokeAsync(() => new BitmapImage());
+
+			App.Logger.LogDebug(
+				"Preview.Icon: path={Path}, reusedListImage={ReusedListImage}, icon={IconMs}ms",
+				LogPathHelper.RedactPath(Item.ItemPath),
+				reusedListImage,
+				iconSw.ElapsedMilliseconds);
 
 			return [];
 		}

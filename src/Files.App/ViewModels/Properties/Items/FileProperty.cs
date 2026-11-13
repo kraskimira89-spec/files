@@ -290,6 +290,7 @@ namespace Files.App.ViewModels.Properties
 		}
 
 		private static ConcurrentDictionary<string, string> cachedPropertiesListFiles = [];
+		private static ConcurrentDictionary<string, List<FileProperty>> cachedPropertyDefinitions = [];
 
 		/// <summary>
 		/// This function retrieves the list of properties to display from the PropertiesInformation.json
@@ -304,16 +305,7 @@ namespace Files.App.ViewModels.Properties
 		/// <returns>A list if FileProperties containing their values</returns>
 		public async static Task<List<FileProperty>> RetrieveAndInitializePropertiesAsync(BaseStorageFile file, string path = Constants.ResourceFilePaths.DetailsPagePropertiesJsonPath)
 		{
-			// cache the contents of the file to avoid repeatedly reading the file
-			if (!cachedPropertiesListFiles.TryGetValue(path, out var text))
-			{
-				var propertiesJsonFile = await StorageFile.GetFileFromApplicationUriAsync(new Uri(path));
-				text = await FileIO.ReadTextAsync(propertiesJsonFile);
-				cachedPropertiesListFiles[path] = text;
-			}
-
-			var list = JsonSerializer.Deserialize(text, AppJsonSerializerContext.Default.ListFileProperty)
-				?? throw new InvalidDataException($"The property definition file '{path}' does not contain a property list.");
+			var list = await GetPropertyDefinitionsAsync(path);
 
 			var propsToGet = new List<string>();
 
@@ -365,6 +357,50 @@ namespace Files.App.ViewModels.Properties
 			}
 
 			return list;
+		}
+
+		private static async Task<List<FileProperty>> GetPropertyDefinitionsAsync(string path)
+		{
+			if (cachedPropertyDefinitions.TryGetValue(path, out var cached))
+				return ClonePropertyDefinitions(cached);
+
+			// Cache raw JSON text to avoid repeatedly reading the packaged file.
+			if (!cachedPropertiesListFiles.TryGetValue(path, out var text))
+			{
+				var propertiesJsonFile = await StorageFile.GetFileFromApplicationUriAsync(new Uri(path));
+				text = await FileIO.ReadTextAsync(propertiesJsonFile);
+				cachedPropertiesListFiles[path] = text;
+			}
+
+			var deserialized = JsonSerializer.Deserialize(text, AppJsonSerializerContext.Default.ListFileProperty)
+				?? throw new InvalidDataException($"The property definition file '{path}' does not contain a property list.");
+
+			cachedPropertyDefinitions[path] = deserialized;
+			return ClonePropertyDefinitions(deserialized);
+		}
+
+		private static List<FileProperty> ClonePropertyDefinitions(List<FileProperty> source)
+		{
+			var clone = new List<FileProperty>(source.Count);
+			foreach (var prop in source)
+			{
+				clone.Add(new FileProperty
+				{
+					NameResource = prop.NameResource,
+					LocalizedName = prop.LocalizedName,
+					SectionResource = prop.SectionResource,
+					Property = prop.Property,
+					PlaceholderText = prop.PlaceholderText,
+					DisplayFunctionName = prop.DisplayFunctionName,
+					IsReadOnly = prop.IsReadOnly,
+					ID = prop.ID,
+					IsMultiLine = prop.IsMultiLine,
+					Visibility = prop.Visibility,
+					EnumeratedList = prop.EnumeratedList,
+				});
+			}
+
+			return clone;
 		}
 
 		public static bool IsSectionApplicableForEmpty(string? sectionResource, string? fileExtension)

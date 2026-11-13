@@ -27,9 +27,10 @@ namespace Files.App.ViewModels.Previews
 			try
 			{
 				var text = TextValue ?? await ReadFileAsTextAsync(PreviewFile);
+				var (lineCount, wordCount) = CountPreviewTextStats(text, countWords: true);
 
-				details.Add(GetFileProperty("PropertyLineCount", text.Split('\n').Length));
-				details.Add(GetFileProperty("PropertyWordCount", text.Split(new[] { ' ', '\n' }, StringSplitOptions.RemoveEmptyEntries).Length));
+				details.Add(GetFileProperty("PropertyLineCount", lineCount));
+				details.Add(GetFileProperty("PropertyWordCount", wordCount));
 
 				TextValue = text.Left(Constants.PreviewPane.TextCharacterLimit);
 			}
