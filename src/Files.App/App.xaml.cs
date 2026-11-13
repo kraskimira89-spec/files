@@ -127,6 +127,7 @@ namespace Files.App
 				}
 
 				var serviceProvider = await servicesTask;
+				Logger.LogInformation("Startup: services and window ready after {Elapsed} ms", startup.ElapsedMilliseconds);
 
 				var userSettingsService = Ioc.Default.GetRequiredService<IUserSettingsService>();
 				var serverInitialization = SafetyExtensions.IgnoreExceptions(async () =>
@@ -144,6 +145,7 @@ namespace Files.App
 
 				// WinRT thumbnails can initialize the same Shell cache outside our icon helpers.
 				await STATask.RunPooled(WindowsStorableHelpers.InitializeShellImageList, Logger);
+				Logger.LogInformation("Startup: shell image list ready after {Elapsed} ms", startup.ElapsedMilliseconds);
 
 				if (isStartupTask)
 					Program.RegisterCurrentInstance();
@@ -154,6 +156,7 @@ namespace Files.App
 				FileTagsManager = Ioc.Default.GetRequiredService<FileTagsManager>();
 				LibraryManager = Ioc.Default.GetRequiredService<LibraryManager>();
 				AppModel = Ioc.Default.GetRequiredService<AppModel>();
+				Logger.LogInformation("Startup: managers ready after {Elapsed} ms", startup.ElapsedMilliseconds);
 
 				MainWindow.Instance.Closed += Window_Closed;
 				MainWindow.Instance.Activated += Window_Activated;
