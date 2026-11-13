@@ -4,6 +4,7 @@
 using Files.App.ViewModels.Properties;
 using Microsoft.UI.Xaml.Media.Imaging;
 using System.IO;
+using Windows.Storage;
 
 namespace Files.App.ViewModels.Previews
 {
@@ -25,9 +26,21 @@ namespace Files.App.ViewModels.Previews
 		private async Task LoadPreviewAndDetailsAsync()
 		{
 			var itemPath = Item.ItemPath!;
-			var rootItem = await FilesystemTasks.WrapNullable(() => DriveHelpers.GetRootFromPathAsync(itemPath));
-			var folder = await StorageFileExtensions.DangerousGetFolderFromPathAsync(itemPath, rootItem.Result)
-				?? throw new InvalidOperationException("The preview folder could not be opened.");
+
+			BaseStorageFolder? folder;
+			try
+			{
+				// Fast path for ordinary local folders (avoids DriveHelpers root resolution).
+				folder = new SystemStorageFolder(await StorageFolder.GetFolderFromPathAsync(itemPath));
+			}
+			catch
+			{
+				var rootItem = await FilesystemTasks.WrapNullable(() => DriveHelpers.GetRootFromPathAsync(itemPath));
+				folder = await StorageFileExtensions.DangerousGetFolderFromPathAsync(itemPath, rootItem.Result);
+			}
+
+			if (folder is null)
+				throw new InvalidOperationException("The preview folder could not be opened.");
 
 			Folder = folder;
 
