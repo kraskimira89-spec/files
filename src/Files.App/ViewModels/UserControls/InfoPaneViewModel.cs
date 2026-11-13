@@ -8,6 +8,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using System.Collections.Specialized;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Windows.Storage;
 using WinRT;
@@ -210,6 +211,7 @@ namespace Files.App.ViewModels.UserControls
 
 		private async Task LoadPreviewControlAsync(CancellationToken token, bool downloadItem)
 		{
+			var totalSw = Stopwatch.StartNew();
 			var item = SelectedItem;
 			if (item is null)
 				throw new InvalidOperationException("The preview pane does not have a selected item.");
@@ -223,7 +225,9 @@ namespace Files.App.ViewModels.UserControls
 			}
 
 			// Show the control immediately; finish loading under the same cancellation token.
+			var createSw = Stopwatch.StartNew();
 			var builtIn = CreateBuiltInPreviewControl(item, downloadItem);
+			var createMs = createSw.ElapsedMilliseconds;
 
 			if (token.IsCancellationRequested)
 				return;
@@ -233,7 +237,14 @@ namespace Files.App.ViewModels.UserControls
 				PreviewPaneContent = builtIn.Value.Control;
 				PreviewPaneState = SelectedDriveItem is not null ? PreviewPaneStates.DriveStorageDetailsAvailable : PreviewPaneStates.PreviewAndDetailsAvailable;
 
+				var loadSw = Stopwatch.StartNew();
 				await builtIn.Value.LoadTask;
+				App.Logger.LogDebug(
+					"Preview.LoadPreviewControl: path={Path}, create={CreateMs}ms, loadTask={LoadMs}ms, total={TotalMs}ms, kind=builtIn",
+					LogPathHelper.RedactPath(item.ItemPath),
+					createMs,
+					loadSw.ElapsedMilliseconds,
+					totalSw.ElapsedMilliseconds);
 				return;
 			}
 
@@ -246,6 +257,11 @@ namespace Files.App.ViewModels.UserControls
 			{
 				PreviewPaneContent = textControl;
 				PreviewPaneState = SelectedDriveItem is not null ? PreviewPaneStates.DriveStorageDetailsAvailable : PreviewPaneStates.PreviewAndDetailsAvailable;
+				App.Logger.LogDebug(
+					"Preview.LoadPreviewControl: path={Path}, create={CreateMs}ms, total={TotalMs}ms, kind=text",
+					LogPathHelper.RedactPath(item.ItemPath),
+					createMs,
+					totalSw.ElapsedMilliseconds);
 				return;
 			}
 
@@ -254,7 +270,14 @@ namespace Files.App.ViewModels.UserControls
 			PreviewPaneContent = control;
 			PreviewPaneState = SelectedDriveItem is not null ? PreviewPaneStates.DriveStorageDetailsAvailable : PreviewPaneStates.PreviewAndDetailsAvailable;
 
+			var basicLoadSw = Stopwatch.StartNew();
 			await basicModel.LoadAsync();
+			App.Logger.LogDebug(
+				"Preview.LoadPreviewControl: path={Path}, create={CreateMs}ms, loadTask={LoadMs}ms, total={TotalMs}ms, kind=basic",
+				LogPathHelper.RedactPath(item.ItemPath),
+				createMs,
+				basicLoadSw.ElapsedMilliseconds,
+				totalSw.ElapsedMilliseconds);
 		}
 
 		/// <summary>

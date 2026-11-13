@@ -16,6 +16,10 @@ namespace Files.App.ViewModels.Previews
 	{
 		private const uint FirstPageRenderWidth = 512;
 		private const uint LaterPageRenderWidth = 720;
+		private const int LookAheadPages = 1;
+
+		private PdfDocument? _pdf;
+		private readonly HashSet<int> _renderedPages = [];
 
 		private Visibility loadingBarVisibility;
 		public Visibility LoadingBarVisibility
@@ -78,28 +82,62 @@ namespace Files.App.ViewModels.Previews
 		public async override Task<List<FileProperty>> LoadPreviewAndDetailsAsync()
 		{
 			var storageFile = await PreviewFile.ToStorageFileAsync();
-			var pdf = await PdfDocument.LoadFromFileAsync(storageFile);
-			_ = TryLoadPagesAsync(pdf);
+			_pdf = await PdfDocument.LoadFromFileAsync(storageFile);
 
-			return
-			[
-				GetFileProperty("PropertyPageCount", pdf.PageCount)
-			];
+			var limit = (int)Math.Clamp(_pdf.PageCount, 0u, (uint)Constants.PreviewPane.PDFPageLimit);
+
+			if (limit == 0)
+			{
+				LoadingBarVisibility = Visibility.Collapsed;
+				return [ GetFileProperty("PropertyPageCount", _pdf.PageCount) ];
+			}
+
+			// Pre-populate placeholders so the FlipView and PipsPager know the full page count immediately.
+			await MainWindow.Instance.DispatcherQueue.EnqueueOrInvokeAsync(() =>
+			{
+				// Page 0 may already hold the shell-thumbnail placeholder from LoadAsync.
+				while (Pages.Count < limit)
+					Pages.Add(new PageViewModel { PageNumber = Pages.Count, PageImage = null });
+				PageCount = limit;
+			});
+
+			_ = TryRenderPageAsync(0, FirstPageRenderWidth);
+
+			return [ GetFileProperty("PropertyPageCount", _pdf.PageCount) ];
 		}
 
-		public async Task TryLoadPagesAsync(PdfDocument pdf)
+		public async Task RequestPageAsync(int pageIndex)
 		{
+			if (_pdf is null || pageIndex < 0 || pageIndex >= PageCount)
+				return;
+
+			var last = Math.Min(pageIndex + LookAheadPages, PageCount - 1);
+			for (var i = pageIndex; i <= last; i++)
+			{
+				if (LoadCancelledTokenSource.Token.IsCancellationRequested)
+					return;
+				await TryRenderPageAsync(i, i == 0 ? FirstPageRenderWidth : LaterPageRenderWidth);
+			}
+		}
+
+		private async Task TryRenderPageAsync(int pageIndex, uint destinationWidth)
+		{
+			if (_pdf is null || !_renderedPages.Add(pageIndex))
+				return;
+
 			try
 			{
-				await LoadPagesAsync(pdf);
+				await RenderAndPublishPageAsync(_pdf, (uint)pageIndex, destinationWidth);
 			}
 			catch (Exception e)
 			{
+				_renderedPages.Remove(pageIndex);
 				Debug.WriteLine(e);
 			}
 			finally
 			{
-				LoadingBarVisibility = Visibility.Collapsed;
+				if (pageIndex == 0)
+					LoadingBarVisibility = Visibility.Collapsed;
 			}
 		}
 
@@ -123,28 +161,7 @@ namespace Files.App.ViewModels.Previews
 			}
 		}
 
-		private async Task LoadPagesAsync(PdfDocument pdf)
-		{
-			var limit = Math.Clamp(pdf.PageCount, 0u, (uint)Constants.PreviewPane.PDFPageLimit);
-			if (limit == 0)
-				return;
-
-			// First page at lower resolution — this is what the user sees first.
-			await RenderAndPublishPageAsync(pdf, 0, FirstPageRenderWidth, replaceExisting: true);
-
-			LoadingBarVisibility = Visibility.Collapsed;
-
-			// Remaining pages after the first paint.
-			for (uint i = 1; i < limit; i++)
-			{
-				if (LoadCancelledTokenSource.Token.IsCancellationRequested)
-					return;
-
-				await RenderAndPublishPageAsync(pdf, i, LaterPageRenderWidth, replaceExisting: false);
-			}
-		}
-
-		private async Task RenderAndPublishPageAsync(PdfDocument pdf, uint pageIndex, uint destinationWidth, bool replaceExisting)
+		private async Task RenderAndPublishPageAsync(PdfDocument pdf, uint pageIndex, uint destinationWidth)
 		{
 			using PdfPage page = pdf.GetPage(pageIndex);
 			using InMemoryRandomAccessStream stream = new();
@@ -164,20 +181,10 @@ namespace Files.App.ViewModels.Previews
 					PageNumber = (int)pageIndex,
 				};
 
-				if (replaceExisting && Pages.Count > 0 && Pages[0].PageNumber == 0)
-				{
-					Pages[0] = pageData;
-				}
-				else if (pageIndex == 0 && Pages.Count == 0)
-				{
-					Pages.Add(pageData);
-					PageCount = 1;
-				}
+				if (pageIndex < Pages.Count)
+					Pages[(int)pageIndex] = pageData;
 				else
-				{
 					Pages.Add(pageData);
-					PageCount = Pages.Count;
-				}
 			});
 		}
 	}
@@ -186,6 +193,6 @@ namespace Files.App.ViewModels.Previews
 	{
 		public int PageNumber { get; set; }
 
-		public BitmapImage PageImage { get; set; }
+		public BitmapImage? PageImage { get; set; }
 	}
 }
