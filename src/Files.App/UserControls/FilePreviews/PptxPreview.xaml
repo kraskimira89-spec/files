@@ -11,32 +11,34 @@
 	<ListView ItemsSource="{x:Bind ViewModel.Slides, Mode=OneWay}" SelectionMode="None">
 		<ListView.ItemTemplate>
 			<DataTemplate x:DataType="previews:PptxSlide">
-				<StackPanel Margin="0,0,0,16">
-					<TextBlock FontWeight="SemiBold" Text="{x:Bind NumberText}" />
-					<TextBlock Text="{x:Bind Text}" TextWrapping="Wrap" />
-					<ItemsControl ItemsSource="{x:Bind Images}">
-						<ItemsControl.ItemTemplate>
-							<DataTemplate>
-								<Image
-									MaxWidth="400"
-									Margin="0,6,0,0"
-									Source="{Binding}" />
-							</DataTemplate>
-						</ItemsControl.ItemTemplate>
-					</ItemsControl>
-					<Border
-						Margin="0,6,0,0"
-						Padding="8,6"
-						Background="{ThemeResource LayerFillColorDefaultBrush}"
-						CornerRadius="{StaticResource ControlCornerRadius}"
-						Visibility="{x:Bind HasNotes}">
+				<Grid
+					Margin="0,0,0,10"
+					ColumnDefinitions="160,*"
+					ColumnSpacing="12">
+					<Image
+						Grid.Column="0"
+						MaxHeight="100"
+						HorizontalAlignment="Left"
+						Stretch="Uniform"
+						Source="{x:Bind Thumbnail}" />
+
+					<StackPanel Grid.Column="1" VerticalAlignment="Top">
+						<TextBlock FontWeight="SemiBold" Text="{x:Bind NumberText}" />
+						<TextBlock
+							MaxLines="4"
+							Text="{x:Bind Text}"
+							TextTrimming="CharacterEllipsis"
+							TextWrapping="Wrap" />
 						<TextBlock
 							FontStyle="Italic"
-							Opacity="0.8"
+							MaxLines="2"
+							Opacity="0.7"
 							Text="{x:Bind Notes}"
-							TextWrapping="Wrap" />
-					</Border>
-				</StackPanel>
+							TextTrimming="CharacterEllipsis"
+							TextWrapping="Wrap"
+							Visibility="{x:Bind HasNotes}" />
+					</StackPanel>
+				</Grid>
 			</DataTemplate>
 		</ListView.ItemTemplate>
 	</ListView>

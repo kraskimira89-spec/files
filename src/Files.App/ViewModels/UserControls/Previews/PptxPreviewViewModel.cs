@@ -259,6 +259,8 @@ namespace Files.App.ViewModels.Previews
 		public string Notes { get; }
 		public IReadOnlyList<BitmapImage> Images { get; }
 
+		public BitmapImage? Thumbnail => Images.Count > 0 ? Images[0] : null;
+
 		public Microsoft.UI.Xaml.Visibility HasNotes => string.IsNullOrWhiteSpace(Notes)
 			? Microsoft.UI.Xaml.Visibility.Collapsed
 			: Microsoft.UI.Xaml.Visibility.Visible;
