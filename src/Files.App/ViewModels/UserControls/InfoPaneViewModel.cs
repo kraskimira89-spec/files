@@ -1,6 +1,7 @@
 // Copyright (c) Files Community
 // Licensed under the MIT License.
 
+using Files.App.Helpers;
 using Files.App.UserControls.FilePreviews;
 using Files.App.ViewModels.Previews;
 using Files.Shared.Helpers;
@@ -331,7 +332,12 @@ namespace Files.App.ViewModels.UserControls
 				return null;
 			}
 
-			var ext = item.FileExtension.ToLowerInvariant();
+			var rawExt = item.FileExtension.ToLowerInvariant();
+
+			// A mislabeled file (e.g. a .doc renamed to .pdf) should still open with the right preview.
+			var ext = rawExt is ".pdf" or ".doc" or ".docx" or ".xlsx" or ".pptx"
+				? PreviewFormatSniffer.DetectExtension(item.ItemPath) ?? rawExt
+				: rawExt;
 
 			if (!item.IsFtpItem &&
 				contentPageContext.PageType != ContentPageTypes.ZipFolder &&
