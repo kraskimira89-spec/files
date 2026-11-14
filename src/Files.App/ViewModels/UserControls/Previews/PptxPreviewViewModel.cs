@@ -16,6 +16,7 @@ namespace Files.App.ViewModels.Previews
 	public sealed partial class PptxPreviewViewModel : TextPreviewViewModel
 	{
 		private static readonly XNamespace DrawingML = "http://schemas.openxmlformats.org/drawingml/2006/main";
+		private static readonly XNamespace Relationships = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 
 		public PptxPreviewViewModel(ListedItem item)
 			: base(item)
@@ -90,7 +91,7 @@ namespace Files.App.ViewModels.Previews
 				var ns = presentation.Root!.Name.Namespace;
 				foreach (var slideId in presentation.Descendants(ns + "sldId"))
 				{
-					var relId = slideId.Attributes().FirstOrDefault(attribute => attribute.Name.LocalName == "id")?.Value;
+					var relId = slideId.Attribute(Relationships + "id")?.Value;
 					if (relId is not null && targets.TryGetValue(relId, out var slidePath))
 						slides.Add(slidePath);
 				}
