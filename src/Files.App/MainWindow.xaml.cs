@@ -58,10 +58,6 @@ namespace Files.App
 			if (rootFrame is null)
 				return false;
 
-			// Submit the initial content and backdrop before the window's normal show animation.
-			await CompositionTarget.GetCompositorForCurrentThread().RequestCommitAsync();
-			App.Logger.LogInformation("Startup: backdrop committed after {Elapsed} ms", sw.ElapsedMilliseconds);
-
 			var firstFrame = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 			CompositionTarget.Rendered += OnRendered;
 			Closed += OnClosed;
@@ -69,6 +65,11 @@ namespace Files.App
 			{
 				Activate();
 				App.Logger.LogInformation("Startup: window activated after {Elapsed} ms", sw.ElapsedMilliseconds);
+
+				// Commit the compositor after the window is shown so the first frame does not block on it;
+				// the backdrop may apply a moment later, accepted for a faster startup.
+				_ = CompositionTarget.GetCompositorForCurrentThread().RequestCommitAsync();
+
 				// Let the initial content paint before starting the remaining initialization.
 				var result = await firstFrame.Task;
 				App.Logger.LogInformation("Startup: first frame rendered after {Elapsed} ms", sw.ElapsedMilliseconds);
