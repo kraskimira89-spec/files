@@ -190,9 +190,11 @@ namespace Files.App.ViewModels.Previews
 		{
 			try
 			{
-				// Excel serial dates count days from 1899-12-30.
+				// Excel serial dates count days from 1899-12-30; a fractional part is the time of day.
 				var date = new DateTime(1899, 12, 30).AddDays(serial);
-				return date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+				return serial % 1 == 0
+					? date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
+					: date.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
 			}
 			catch
 			{
