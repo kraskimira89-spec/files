@@ -22,17 +22,10 @@ namespace Files.App.UserControls.FilePreviews
 		}
 
 		[DynamicWindowsRuntimeCast(typeof(FrameworkElement))]
-		private async void PreviewHost_Loaded(object sender, RoutedEventArgs e)
+		private void PreviewHost_Loaded(object sender, RoutedEventArgs e)
 		{
-			try
-			{
-				await ViewModel.LoadPreviewAsync(contentPresenter);
-				ViewModel.SizeChanged(GetPreviewSize());
-			}
-			catch (Exception ex)
-			{
-				Debug.WriteLine(ex);
-			}
+			ViewModel.LoadPreview(contentPresenter);
+			ViewModel.SizeChanged(GetPreviewSize());
 
 			if (XamlRoot.Content is FrameworkElement element)
 			{

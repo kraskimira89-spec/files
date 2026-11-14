@@ -42,9 +42,6 @@ namespace Files.App.ViewModels.Previews
 		HWND _hWnd = HWND.Null;
 		bool _isOfficePreview = false;
 		bool _unloaded;
-		volatile bool _stopRequested;
-		Thread? _hostThread;
-		TaskCompletionSource<HWND>? _windowReady;
 		unsafe char* _pszClassName;
 
 		// Constructor
@@ -131,11 +128,6 @@ namespace Files.App.ViewModels.Previews
 					return new LRESULT(-1);
 				}
 			}
-			else if (msg is PInvoke.WM_CLOSE)
-			{
-				PInvoke.DestroyWindow(hwnd);
-				return new LRESULT(0);
-			}
 			else if (msg is PInvoke.WM_DESTROY)
 			{
 				if (_previewHandler is not null)
@@ -143,130 +135,64 @@ namespace Files.App.ViewModels.Previews
 					_previewHandler.Dispose();
 					_previewHandler = null;
 				}
-
-				_hWnd = HWND.Null;
-				PInvoke.PostQuitMessage(0);
 			}
 
 			return PInvoke.DefWindowProc(hwnd, msg, wParam, lParam);
 		}
 
-		public async Task LoadPreviewAsync(UIElement presenter)
+		public unsafe void LoadPreview(UIElement presenter)
 		{
 			App.Logger.LogInformation($"ShellPreview.LoadPreview: Item={LogPathHelper.RedactPath(Item?.ItemPath)}");
 
 			var parent = MainWindow.Instance.WindowHandle;
 			var hInst = PInvoke.GetModuleHandle(default(PWSTR));
 			var szClassName = $"{nameof(ShellPreviewViewModel)}-{Guid.NewGuid()}";
+			var szWindowName = $"Preview";
 
-			_windowReady = new TaskCompletionSource<HWND>(TaskCreationOptions.RunContinuationsAsynchronously);
-			_hostThread = new Thread(() => HostThreadProc(parent, hInst, szClassName));
-			_hostThread.IsBackground = true;
-			_hostThread.SetApartmentState(ApartmentState.STA);
-			_hostThread.Start();
+			_pszClassName = (char*)Marshal.StringToHGlobalUni(szClassName);
 
-			HWND hwnd;
-			try
+			_windProc = new(WndProc);
+			var pWindProc = Marshal.GetFunctionPointerForDelegate<WNDPROC>(_windProc);
+			var pfnWndProc = (delegate* unmanaged[Stdcall]<HWND, uint, WPARAM, LPARAM, LRESULT>)pWindProc;
+
+			_windowClass = new WNDCLASSEXW()
 			{
-				hwnd = await _windowReady.Task;
-			}
-			catch
+				cbSize = (uint)sizeof(WNDCLASSEXW),
+				lpfnWndProc = pfnWndProc,
+				hInstance = hInst,
+				lpszClassName = _pszClassName,
+				style = 0,
+				hIcon = default,
+				hIconSm = default,
+				hCursor = default,
+				hbrBackground = default,
+				lpszMenuName = null,
+				cbClsExtra = 0,
+				cbWndExtra = 0,
+			};
+
+			PInvoke.RegisterClassEx(_windowClass);
+
+			fixed (char* pszWindowName = szWindowName)
 			{
-				hwnd = HWND.Null;
+				_hWnd = PInvoke.CreateWindowEx(
+					WINDOW_EX_STYLE.WS_EX_LAYERED | WINDOW_EX_STYLE.WS_EX_COMPOSITED,
+					_pszClassName,
+					pszWindowName,
+					WINDOW_STYLE.WS_CHILD | WINDOW_STYLE.WS_CLIPSIBLINGS | WINDOW_STYLE.WS_VISIBLE,
+					0, 0, 0, 0,
+					new(parent),
+					HMENU.Null,
+					hInst);
 			}
 
-			if (hwnd == HWND.Null || _unloaded)
+			if (_hWnd == HWND.Null)
 			{
 				UnloadPreview();
 				return;
 			}
 
 			_ = ChildWindowToXaml(parent, presenter);
-		}
-
-		private unsafe void HostThreadProc(nint parent, HINSTANCE hInst, string szClassName)
-		{
-			PInvoke.OleInitialize();
-			try
-			{
-				_pszClassName = (char*)Marshal.StringToHGlobalUni(szClassName);
-				_windProc = new(WndProc);
-				var pWindProc = Marshal.GetFunctionPointerForDelegate<WNDPROC>(_windProc);
-				var pfnWndProc = (delegate* unmanaged[Stdcall]<HWND, uint, WPARAM, LPARAM, LRESULT>)pWindProc;
-
-				_windowClass = new WNDCLASSEXW()
-				{
-					cbSize = (uint)sizeof(WNDCLASSEXW),
-					lpfnWndProc = pfnWndProc,
-					hInstance = hInst,
-					lpszClassName = _pszClassName,
-					style = 0,
-					hIcon = default,
-					hIconSm = default,
-					hCursor = default,
-					hbrBackground = default,
-					lpszMenuName = null,
-					cbClsExtra = 0,
-					cbWndExtra = 0,
-				};
-
-				PInvoke.RegisterClassEx(_windowClass);
-
-				var szWindowName = "Preview";
-				fixed (char* pszWindowName = szWindowName)
-				{
-					_hWnd = PInvoke.CreateWindowEx(
-						WINDOW_EX_STYLE.WS_EX_LAYERED | WINDOW_EX_STYLE.WS_EX_COMPOSITED,
-						_pszClassName,
-						pszWindowName,
-						WINDOW_STYLE.WS_CHILD | WINDOW_STYLE.WS_CLIPSIBLINGS | WINDOW_STYLE.WS_VISIBLE,
-						0, 0, 0, 0,
-						new(parent),
-						HMENU.Null,
-						hInst);
-				}
-
-				_windowReady!.TrySetResult(_hWnd);
-
-				if (_hWnd == HWND.Null || _stopRequested)
-					return;
-
-				MSG msg = default;
-				while (PInvoke.GetMessage(out msg, HWND.Null, 0, 0))
-				{
-					PInvoke.TranslateMessage(&msg);
-					PInvoke.DispatchMessage(&msg);
-				}
-			}
-			catch (Exception ex)
-			{
-				_windowReady!.TrySetException(ex);
-				App.Logger.LogWarning(ex, "ShellPreview host thread failed.");
-			}
-			finally
-			{
-				if (_hWnd != HWND.Null)
-				{
-					PInvoke.DestroyWindow(_hWnd);
-					_hWnd = HWND.Null;
-				}
-
-				if (_previewHandler is not null)
-				{
-					_previewHandler.Dispose();
-					_previewHandler = null;
-				}
-
-				PInvoke.UnregisterClass(_windowClass.lpszClassName, PInvoke.GetModuleHandle(default(PWSTR)));
-
-				if (_pszClassName is not null)
-				{
-					Marshal.FreeHGlobal((nint)_pszClassName);
-					_pszClassName = null;
-				}
-
-				PInvoke.OleUninitialize();
-			}
 		}
 
 		private unsafe bool ChildWindowToXaml(nint parent, UIElement presenter)
@@ -346,16 +272,16 @@ namespace Files.App.ViewModels.Previews
 			if (_unloaded)
 				return;
 			_unloaded = true;
-			_stopRequested = true;
 
-			var hwnd = _windowReady is { Task.IsCompletedSuccessfully: true } ? _windowReady.Task.Result : HWND.Null;
-			if (hwnd != HWND.Null)
+			if (_hWnd != HWND.Null)
 			{
-				PInvoke.PostMessage(hwnd, PInvoke.WM_CLOSE, default, default);
-				App.Logger.LogInformation($"ShellPreview.UnloadPreview: HWND={((nint)hwnd)}, Item={LogPathHelper.RedactPath(Item?.ItemPath)}");
+				PInvoke.DestroyWindow(_hWnd);
+				App.Logger.LogInformation($"ShellPreview.UnloadPreview: HWND={((nint)_hWnd)}, Item={LogPathHelper.RedactPath(Item?.ItemPath)}");
+				_hWnd = HWND.Null;
 			}
 			else
 				App.Logger.LogInformation($"ShellPreview.UnloadPreview: HWND=, Item={LogPathHelper.RedactPath(Item?.ItemPath)}");
+
 
 			_contentExternalOutputLink?.Dispose();
 			_contentExternalOutputLink = null;
@@ -366,6 +292,14 @@ namespace Files.App.ViewModels.Previews
 			ReleaseComObject(ref _dCompositionDevice);
 			ReleaseComObject(ref _d3d11DeviceContext);
 			ReleaseComObject(ref _d3d11Device);
+
+			PInvoke.UnregisterClass(_windowClass.lpszClassName, PInvoke.GetModuleHandle(default(PWSTR)));
+
+			if (_pszClassName is not null)
+			{
+				Marshal.FreeHGlobal((nint)_pszClassName);
+				_pszClassName = null;
+			}
 		}
 
 		private static void ReleaseComObject<T>(ref T? comInterface) where T : class
