@@ -385,6 +385,12 @@ namespace Files.App.ViewModels.UserControls
 				return (new TextPreview(model), model.LoadAsync());
 			}
 
+			if (ext is ".xlsx")
+			{
+				var model = new XlsxPreviewViewModel(item);
+				return (new XlsxPreview(model), model.LoadAsync());
+			}
+
 			if (ShellPreviewViewModel.FindPreviewHandlerFor(item.FileExtension, 0) is not null &&
 				!FileExtensionHelpers.IsFontFile(item.FileExtension) &&
 				!FileExtensionHelpers.IsExecutableFile(item.FileExtension))
