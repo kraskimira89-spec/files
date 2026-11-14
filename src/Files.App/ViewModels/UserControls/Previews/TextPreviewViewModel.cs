@@ -6,13 +6,13 @@ using Files.App.ViewModels.Properties;
 
 namespace Files.App.ViewModels.Previews
 {
-	public sealed partial class TextPreviewViewModel : BasePreviewModel
+	public partial class TextPreviewViewModel : BasePreviewModel
 	{
 		private string? textValue;
 		public string? TextValue
 		{
 			get => textValue;
-			private set => SetProperty(ref textValue, value);
+			protected set => SetProperty(ref textValue, value);
 		}
 
 		public TextPreviewViewModel(ListedItem item)

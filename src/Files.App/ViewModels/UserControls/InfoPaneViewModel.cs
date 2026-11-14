@@ -378,6 +378,13 @@ namespace Files.App.ViewModels.UserControls
 				return (new CodePreview(model), model.LoadAsync());
 			}
 
+			// Read Office packages directly instead of spawning the slow Shell preview handler.
+			if (ext is ".docx")
+			{
+				var model = new DocxPreviewViewModel(item);
+				return (new TextPreview(model), model.LoadAsync());
+			}
+
 			if (ShellPreviewViewModel.FindPreviewHandlerFor(item.FileExtension, 0) is not null &&
 				!FileExtensionHelpers.IsFontFile(item.FileExtension) &&
 				!FileExtensionHelpers.IsExecutableFile(item.FileExtension))
