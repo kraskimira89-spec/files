@@ -64,6 +64,30 @@ namespace Files.App.Utils.Storage
 			&& !query.Contains(':', StringComparison.Ordinal)
 			&& query.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length >= 3;
 
+		private static readonly string[] ContentPrefixes = ["content:", "содержит:", "содержимое:"];
+
+		/// <summary>
+		/// Builds an AQS content filter for an explicit "content:word" query so the Windows Search
+		/// index looks inside the file text instead of the file names.
+		/// </summary>
+		private static string? TryBuildContentQuery(string query)
+		{
+			var trimmed = query.TrimStart();
+			foreach (var prefix in ContentPrefixes)
+			{
+				if (!trimmed.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+					continue;
+
+				var term = trimmed[prefix.Length..].Trim().Trim('"');
+				if (term.Length == 0)
+					return null;
+
+				return $"System.Search.Contents:\"{term}\"";
+			}
+
+			return null;
+		}
+
 		public static bool IsAvailable()
 		{
 			if (_availability is not Availability.Unknown)
@@ -97,6 +121,10 @@ namespace Files.App.Utils.Storage
 
 		public static async Task<string?> TryTranslateToAqsAsync(string query, CancellationToken token)
 		{
+			// Explicit content search: "content:word" (or "содержит:слово") searches inside file text.
+			if (TryBuildContentQuery(query) is { } contentQuery)
+				return contentQuery;
+
 			if (!IsNaturalLanguageQuery(query))
 				return null;
 
