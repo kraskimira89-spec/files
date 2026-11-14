@@ -3,12 +3,15 @@
 
 using Files.App.ViewModels.Properties;
 using SevenZip;
+using System.Collections.Concurrent;
 using System.IO;
 
 namespace Files.App.ViewModels.Previews
 {
 	public sealed partial class ArchivePreviewViewModel : BasePreviewModel
 	{
+		private static readonly ConcurrentDictionary<string, (long Stamp, IReadOnlyList<ArchiveEntry> Entries)> ArchiveCatalogCache = new(StringComparer.OrdinalIgnoreCase);
+
 		private IReadOnlyList<ArchiveEntry> entries = [];
 		private IReadOnlyList<ArchiveNode> rootNodes = [];
 		private string searchText = string.Empty;
@@ -49,6 +52,16 @@ namespace Files.App.ViewModels.Previews
 		{
 			var details = new List<FileProperty>();
 
+			var path = Item.ItemPath!;
+			var stamp = GetFileStamp(path);
+
+			if (stamp != 0 && ArchiveCatalogCache.TryGetValue(path, out var cached) && cached.Stamp == stamp)
+			{
+				entries = cached.Entries;
+				BuildDetailsAndTree(details);
+				return details;
+			}
+
 			var zipResult = await FilesystemTasks.WrapNullable<SevenZipExtractor>(async () =>
 			{
 				var arch = new SevenZipExtractor(await PreviewFile.OpenStreamForReadAsync());
@@ -72,21 +85,6 @@ namespace Files.App.ViewModels.Previews
 				return details;
 			}
 
-			var folderCount = 0;
-			var fileCount = 0;
-			ulong totalSize = 0;
-
-			foreach (ArchiveFileInfo entry in zipFile.ArchiveFileData)
-			{
-				if (!entry.IsDirectory)
-				{
-					++fileCount;
-					totalSize += entry.Size;
-				}
-			}
-
-			folderCount = (int)zipFile.FilesCount - fileCount;
-
 			entries = zipFile.ArchiveFileData
 				.Select(entry => new ArchiveEntry(
 					entry.FileName,
@@ -95,15 +93,51 @@ namespace Files.App.ViewModels.Previews
 					entry.Size))
 				.ToList();
 
-			RebuildTree();
+			if (stamp != 0)
+				ArchiveCatalogCache[path] = (stamp, entries);
 
-			string propertyItemCount = Strings.DetailsArchiveItems.GetLocalizedFormatResource(zipFile.FilesCount, fileCount, folderCount);
-			details.Add(GetFileProperty("PropertyItemCount", propertyItemCount));
-			details.Add(GetFileProperty("PropertyUncompressedSize", totalSize.ToLongSizeString()));
+			BuildDetailsAndTree(details);
 
 			// Loads the thumbnail preview
 			_ = await base.LoadPreviewAndDetailsAsync();
 			return details;
+		}
+
+		private void BuildDetailsAndTree(List<FileProperty> details)
+		{
+			var fileCount = 0;
+			var folderCount = 0;
+			ulong totalSize = 0;
+
+			foreach (var entry in entries)
+			{
+				if (entry.IsDirectory)
+					++folderCount;
+				else
+				{
+					++fileCount;
+					totalSize += entry.Size;
+				}
+			}
+
+			RebuildTree();
+
+			string propertyItemCount = Strings.DetailsArchiveItems.GetLocalizedFormatResource(entries.Count, fileCount, folderCount);
+			details.Add(GetFileProperty("PropertyItemCount", propertyItemCount));
+			details.Add(GetFileProperty("PropertyUncompressedSize", totalSize.ToLongSizeString()));
+		}
+
+		private static long GetFileStamp(string path)
+		{
+			try
+			{
+				var info = new FileInfo(path);
+				return info.Exists ? info.LastWriteTimeUtc.Ticks ^ info.Length : 0;
+			}
+			catch
+			{
+				return 0;
+			}
 		}
 
 		private void RebuildTree()
