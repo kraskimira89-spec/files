@@ -388,7 +388,7 @@ namespace Files.App.ViewModels.UserControls
 			if (ext is ".docx")
 			{
 				var model = new DocxPreviewViewModel(item);
-				return (new TextPreview(model), model.LoadAsync());
+				return (new DocxPreview(model), model.LoadAsync());
 			}
 
 			if (ext is ".xlsx")
