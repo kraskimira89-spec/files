@@ -97,8 +97,17 @@ namespace Files.App.Utils.Storage
 
 		public static async Task<string?> TryTranslateToAqsAsync(string query, CancellationToken token)
 		{
-			if (!IsNaturalLanguageQuery(query) || !IsAvailable())
+			if (!IsNaturalLanguageQuery(query))
 				return null;
+
+			// The Windows language model is Windows 11 only; parse common phrasings deterministically
+			// on systems where it is unavailable so the feature still works there.
+			if (!IsAvailable())
+			{
+				var local = TryParseLocally(query);
+				App.Logger.LogInformation("Natural language search: {Result} (local parser)", local is null ? "no filters" : "translated");
+				return local;
+			}
 
 			try
 			{
@@ -290,6 +299,68 @@ namespace Files.App.Utils.Storage
 
 		private static bool IsExtension(string extension)
 			=> extension.Length > 0 && extension.Split('.').All(part => WordRegex().IsMatch(part));
+
+		// Common type words (Russian and English) mapped to the AQS filters used by the model path.
+		private static readonly (string[] Words, string Aqs)[] LocalTypeWords =
+		[
+			(["pdf"], "ext:.pdf"),
+			(["word", "doc", "docx", "ворд", "док"], "ext:.docx"),
+			(["excel", "xls", "xlsx", "эксель", "эксэль"], "ext:.xlsx"),
+			(["powerpoint", "ppt", "pptx", "презентац"], "ext:.pptx"),
+			(["картинк", "изображени", "фото", "image", "photo", "picture"], "kind:picture"),
+			(["видео", "video"], "kind:video"),
+			(["музык", "аудио", "music", "audio"], "kind:music"),
+			(["папк", "folder"], "kind:folder"),
+			(["программ", "program"], "kind:program"),
+		];
+
+		private static readonly (string Phrase, string Token)[] LocalDatePhrases =
+		[
+			("сегодня", "today"), ("today", "today"),
+			("вчера", "yesterday"), ("yesterday", "yesterday"),
+			("на этой неделе", "thisweek"), ("this week", "thisweek"),
+			("на прошлой неделе", "lastweek"), ("last week", "lastweek"),
+			("в этом месяце", "thismonth"), ("this month", "thismonth"),
+			("в прошлом месяце", "lastmonth"), ("за прошлый месяц", "lastmonth"), ("last month", "lastmonth"),
+			("в этом году", "thisyear"), ("this year", "thisyear"),
+			("в прошлом году", "lastyear"), ("за прошлый год", "lastyear"), ("last year", "lastyear"),
+		];
+
+		/// <summary>
+		/// Parses common natural-language filters without a model, for systems where the Windows
+		/// language model is unavailable. Coverage is intentionally narrow: file types, size bounds
+		/// and the usual recent-date phrases.
+		/// </summary>
+		private static string? TryParseLocally(string query)
+		{
+			var text = query.ToLowerInvariant();
+			var terms = new List<string>();
+
+			var types = LocalTypeWords
+				.Where(type => type.Words.Any(word => text.Contains(word, StringComparison.Ordinal)))
+				.Select(type => type.Aqs)
+				.Distinct()
+				.ToList();
+			if (types.Count > 0)
+				terms.Add(types.Count is 1 ? types[0] : $"({string.Join(" OR ", types)})");
+
+			var sizeMatch = SizeRegex().Match(text);
+			if (sizeMatch.Success)
+			{
+				var unit = sizeMatch.Groups[3].Value is "kb" or "кб" ? "KB" : sizeMatch.Groups[3].Value is "gb" or "гб" ? "GB" : "MB";
+				var direction = sizeMatch.Groups[1].Value is "over" or "more than" or "greater than" or "bigger than" or "больше" or "более" ? ">" : "<";
+				terms.Add($"size:{direction}{sizeMatch.Groups[2].Value.Replace(',', '.')}{unit}");
+			}
+
+			var date = LocalDatePhrases.FirstOrDefault(item => text.Contains(item.Phrase, StringComparison.Ordinal));
+			if (date.Token is not null)
+				terms.Add($"datemodified:{date.Token}");
+
+			return terms.Count > 0 ? string.Join(' ', terms) : null;
+		}
+
+		[GeneratedRegex(@"\b(over|more than|greater than|bigger than|under|less than|smaller than|больше|более|меньше|менее)\s+(\d+(?:[.,]\d+)?)\s*(mb|мб|kb|кб|gb|гб)\b", RegexOptions.IgnoreCase)]
+		private static partial Regex SizeRegex();
 
 		[GeneratedRegex(@"^[\p{L}\p{N}_-]+$")]
 		private static partial Regex WordRegex();
