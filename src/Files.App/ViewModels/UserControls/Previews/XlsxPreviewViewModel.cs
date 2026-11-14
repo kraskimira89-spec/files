@@ -99,14 +99,18 @@ namespace Files.App.ViewModels.Previews
 				{
 					var cells = new List<(int Column, string Value)>();
 					foreach (var cell in row.Descendants(ns + "c"))
-					{
-						var text = ReadCellValue(cell, ns, sharedStrings, cellFormats, dateFormats);
-						if (!string.IsNullOrEmpty(text))
-							cells.Add((ColumnIndex(cell.Attribute("r")?.Value), text));
-					}
+						cells.Add((ColumnIndex(cell.Attribute("r")?.Value), ReadCellValue(cell, ns, sharedStrings, cellFormats, dateFormats)));
 
+					// Fill the column gaps so merged and empty cells keep the table aligned.
 					if (cells.Count > 0)
+					{
+						var present = cells.Select(cell => cell.Column).ToHashSet();
+						for (var column = 1; column <= present.Max(); column++)
+							if (!present.Contains(column))
+								cells.Add((column, string.Empty));
+
 						rows.Add(cells);
+					}
 				}
 
 				var widths = new Dictionary<int, int>();
@@ -182,7 +186,15 @@ namespace Files.App.ViewModels.Previews
 			if (type is "inlineStr")
 				return string.Concat(cell.Descendants(ns + "t").Select(run => run.Value));
 
-			var value = cell.Element(ns + "v")?.Value ?? string.Empty;
+			var value = cell.Element(ns + "v")?.Value;
+
+			// A formula cell without a cached result: show the formula itself.
+			if (value is null)
+			{
+				var formula = cell.Element(ns + "f")?.Value;
+				return string.IsNullOrWhiteSpace(formula) ? string.Empty : $"={formula}";
+			}
+
 			if (type is "s" && int.TryParse(value, out var index) && index >= 0 && index < sharedStrings.Count)
 				return sharedStrings[index];
 
