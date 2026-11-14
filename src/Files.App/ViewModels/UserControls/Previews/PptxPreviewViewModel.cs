@@ -52,7 +52,7 @@ namespace Files.App.ViewModels.Previews
 								images.Add(image);
 						}
 
-						built.Add(new PptxSlide(data.NumberText, data.Text, images));
+						built.Add(new PptxSlide(data.NumberText, data.Text, data.Notes, images));
 					}
 
 					Slides = built;
@@ -80,15 +80,15 @@ namespace Files.App.ViewModels.Previews
 				if (entry is null)
 					continue;
 
-				var (text, imageBytes) = ExtractSlide(archive, entry, slidePath);
-				slides.Add(new PptxSlideData($"Slide {index}", text, imageBytes));
+				var (text, notes, imageBytes) = ExtractSlide(archive, entry, slidePath);
+				slides.Add(new PptxSlideData($"Slide {index}", text, notes, imageBytes));
 				index++;
 			}
 
 			return slides;
 		}
 
-		private static (string Text, List<byte[]> Images) ExtractSlide(ZipArchive archive, ZipArchiveEntry slideEntry, string slidePath)
+		private static (string Text, string Notes, List<byte[]> Images) ExtractSlide(ZipArchive archive, ZipArchiveEntry slideEntry, string slidePath)
 		{
 			using var slideStream = slideEntry.Open();
 			var slide = XDocument.Load(slideStream);
@@ -96,8 +96,9 @@ namespace Files.App.ViewModels.Previews
 
 			var images = new List<byte[]>();
 
-			// Relationship id -> part path for this slide (images and SmartArt data).
+			// Relationship id -> part path for this slide (images, SmartArt data and notes).
 			var targets = new Dictionary<string, string>();
+			string? notesPath = null;
 			var relsEntry = archive.GetEntry(SlideRelsPath(slidePath));
 			if (relsEntry is not null)
 			{
@@ -107,8 +108,14 @@ namespace Files.App.ViewModels.Previews
 				{
 					var id = rel.Attribute("Id")?.Value;
 					var target = rel.Attribute("Target")?.Value;
-					if (id is not null && target is not null)
-						targets[id] = ResolveMediaPath(slidePath, target);
+					if (id is null || target is null)
+						continue;
+
+					var resolved = ResolveMediaPath(slidePath, target);
+					targets[id] = resolved;
+
+					if (rel.Attribute("Type")?.Value is { } type && type.EndsWith("/notesSlide", StringComparison.OrdinalIgnoreCase))
+						notesPath = resolved;
 				}
 			}
 
@@ -158,7 +165,17 @@ namespace Files.App.ViewModels.Previews
 					? $"Схема: {string.Join(", ", diagramText)}"
 					: $"{text}\nСхема: {string.Join(", ", diagramText)}";
 
-			return (fullText, images);
+			var notes = string.Empty;
+			if (notesPath is not null && archive.GetEntry(notesPath) is { } notesEntry)
+			{
+				using var notesStream = notesEntry.Open();
+				var notesDoc = XDocument.Load(notesStream);
+				notes = string.Join(" ", notesDoc.Descendants(DrawingML + "t")
+					.Select(run => run.Value)
+					.Where(value => !string.IsNullOrWhiteSpace(value)));
+			}
+
+			return (fullText, notes, images);
 		}
 
 		private static string SlideRelsPath(string slidePath)
@@ -233,18 +250,24 @@ namespace Files.App.ViewModels.Previews
 		}
 	}
 
-	internal sealed record PptxSlideData(string NumberText, string Text, IReadOnlyList<byte[]> ImageBytes);
+	internal sealed record PptxSlideData(string NumberText, string Text, string Notes, IReadOnlyList<byte[]> ImageBytes);
 
 	public sealed class PptxSlide
 	{
 		public string NumberText { get; }
 		public string Text { get; }
+		public string Notes { get; }
 		public IReadOnlyList<BitmapImage> Images { get; }
 
-		public PptxSlide(string numberText, string text, IReadOnlyList<BitmapImage> images)
+		public Microsoft.UI.Xaml.Visibility HasNotes => string.IsNullOrWhiteSpace(Notes)
+			? Microsoft.UI.Xaml.Visibility.Collapsed
+			: Microsoft.UI.Xaml.Visibility.Visible;
+
+		public PptxSlide(string numberText, string text, string notes, IReadOnlyList<BitmapImage> images)
 		{
 			NumberText = numberText;
 			Text = text;
+			Notes = notes;
 			Images = images;
 		}
 	}

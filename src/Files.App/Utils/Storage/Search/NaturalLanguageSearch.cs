@@ -354,6 +354,22 @@ namespace Files.App.Utils.Storage
 			("в прошлом году", "lastyear"), ("за прошлый год", "lastyear"), ("last year", "lastyear"),
 		];
 
+		private static readonly (string[] Words, int Month)[] LocalMonths =
+		[
+			(["январ", "january", "jan"], 1),
+			(["феврал", "february", "feb"], 2),
+			(["март", "march", "mar"], 3),
+			(["апрел", "april", "apr"], 4),
+			(["май", "мая", "may"], 5),
+			(["июн", "june", "jun"], 6),
+			(["июл", "july", "jul"], 7),
+			(["август", "august", "aug"], 8),
+			(["сентябр", "september", "sep"], 9),
+			(["октябр", "october", "oct"], 10),
+			(["ноябр", "november", "nov"], 11),
+			(["декабр", "december", "dec"], 12),
+		];
+
 		/// <summary>
 		/// Parses common natural-language filters without a model, for systems where the Windows
 		/// language model is unavailable. Coverage is intentionally narrow: file types, size bounds
@@ -382,13 +398,43 @@ namespace Files.App.Utils.Storage
 
 			var date = LocalDatePhrases.FirstOrDefault(item => text.Contains(item.Phrase, StringComparison.Ordinal));
 			if (date.Token is not null)
+			{
 				terms.Add($"datemodified:{date.Token}");
+			}
+			else if (DateRangeRegex().Match(query) is { Success: true } rangeMatch)
+			{
+				terms.Add($"datemodified:{rangeMatch.Groups[1].Value}..{rangeMatch.Groups[2].Value}");
+			}
+			else
+			{
+				var month = LocalMonths.FirstOrDefault(item => item.Words.Any(word => text.Contains(word, StringComparison.Ordinal)));
+				if (month.Month > 0)
+				{
+					var first = new DateTime(DateTime.Now.Year, month.Month, 1);
+					var last = first.AddMonths(1).AddDays(-1);
+					terms.Add($"datemodified:{first:yyyy-MM-dd}..{last:yyyy-MM-dd}");
+				}
+			}
+
+			// Quoted text is treated as a name filter.
+			foreach (Match match in QuotedRegex().Matches(query))
+			{
+				var word = match.Groups[1].Value.Trim();
+				if (word.Length > 0 && WordRegex().IsMatch(word))
+					terms.Add($"name:{word}");
+			}
 
 			return terms.Count > 0 ? string.Join(' ', terms) : null;
 		}
 
 		[GeneratedRegex(@"\b(over|more than|greater than|bigger than|under|less than|smaller than|больше|более|меньше|менее)\s+(\d+(?:[.,]\d+)?)\s*(mb|мб|kb|кб|gb|гб)\b", RegexOptions.IgnoreCase)]
 		private static partial Regex SizeRegex();
+
+		[GeneratedRegex(@"(\d{4}-\d{2}-\d{2})\s*\.\.\s*(\d{4}-\d{2}-\d{2})")]
+		private static partial Regex DateRangeRegex();
+
+		[GeneratedRegex("\"([^\"]+)\"")]
+		private static partial Regex QuotedRegex();
 
 		[GeneratedRegex(@"^[\p{L}\p{N}_-]+$")]
 		private static partial Regex WordRegex();

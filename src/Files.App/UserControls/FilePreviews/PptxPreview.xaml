@@ -24,6 +24,18 @@
 							</DataTemplate>
 						</ItemsControl.ItemTemplate>
 					</ItemsControl>
+					<Border
+						Margin="0,6,0,0"
+						Padding="8,6"
+						Background="{ThemeResource LayerFillColorDefaultBrush}"
+						CornerRadius="{StaticResource ControlCornerRadius}"
+						Visibility="{x:Bind HasNotes}">
+						<TextBlock
+							FontStyle="Italic"
+							Opacity="0.8"
+							Text="{x:Bind Notes}"
+							TextWrapping="Wrap" />
+					</Border>
 				</StackPanel>
 			</DataTemplate>
 		</ListView.ItemTemplate>
