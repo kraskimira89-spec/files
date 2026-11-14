@@ -9,11 +9,16 @@ using System.IO;
 
 namespace Files.App.ViewModels.Previews
 {
+	/// <summary>
+	/// Renders an archive's contents as a lazily materialized folder tree. Each folder builds its
+	/// direct children on first access, so a 100k-entry archive no longer allocates every node up front.
+	/// </summary>
 	public sealed partial class ArchivePreviewViewModel : BasePreviewModel
 	{
 		private static readonly ConcurrentDictionary<string, (long Stamp, IReadOnlyList<ArchiveEntry> Entries)> ArchiveCatalogCache = new(StringComparer.OrdinalIgnoreCase);
 
 		private IReadOnlyList<ArchiveEntry> entries = [];
+		private IReadOnlyDictionary<string, ulong> folderSizes = new Dictionary<string, ulong>(StringComparer.OrdinalIgnoreCase);
 		private IReadOnlyList<ArchiveNode> rootNodes = [];
 		private string searchText = string.Empty;
 		private int sortIndex;
@@ -57,6 +62,11 @@ namespace Files.App.ViewModels.Previews
 
 		public bool CanExtractSelected => SelectedEntry is { EntryIndex: >= 0 };
 
+		public ArchivePreviewViewModel(ListedItem item)
+			: base(item)
+		{
+		}
+
 		/// <summary>
 		/// Extracts the selected archive entry next to the archive file.
 		/// </summary>
@@ -82,11 +92,6 @@ namespace Files.App.ViewModels.Previews
 			{
 				App.Logger.LogWarning(e, "Archive: could not extract an entry from the preview");
 			}
-		}
-
-		public ArchivePreviewViewModel(ListedItem item)
-			: base(item)
-		{
 		}
 
 		public override async Task<List<FileProperty>> LoadPreviewAndDetailsAsync()
@@ -162,6 +167,7 @@ namespace Files.App.ViewModels.Previews
 				}
 			}
 
+			folderSizes = ComputeFolderSizes();
 			RebuildTree();
 
 			string propertyItemCount = Strings.DetailsArchiveItems.GetLocalizedFormatResource(entries.Count, fileCount, folderCount);
@@ -184,71 +190,97 @@ namespace Files.App.ViewModels.Previews
 
 		private void RebuildTree()
 		{
+			var root = new ArchiveNode(string.Empty, string.Empty, true, BuildChildren);
+			var children = root.Children;
+
+			foreach (var child in children)
+				child.IsExpanded = children.Count <= 10;
+
+			RootNodes = children;
+		}
+
+		/// <summary>
+		/// Builds the direct children of a folder on demand (called lazily by <see cref="ArchiveNode.Children"/>).
+		/// </summary>
+		private IReadOnlyList<ArchiveNode> BuildChildren(string parentPath)
+		{
+			var prefix = parentPath.Length == 0 ? string.Empty : parentPath + "/";
 			var search = SearchText?.Trim() ?? string.Empty;
-			var root = new ArchiveNode(string.Empty, true);
+			var byName = new Dictionary<string, ArchiveNode>(StringComparer.OrdinalIgnoreCase);
+			var nodes = new List<ArchiveNode>();
 
 			foreach (var entry in entries)
 			{
-				var parts = entry.Name.Split(['/', '\\'], StringSplitOptions.RemoveEmptyEntries);
-				if (parts.Length == 0)
+				var full = entry.Name.Replace('\\', '/');
+				if (!full.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
 					continue;
 
-				var node = root;
-				for (var i = 0; i < parts.Length; i++)
+				var rest = full[prefix.Length..];
+				if (rest.Length == 0)
+					continue;
+
+				var slash = rest.IndexOf('/');
+				var isDirect = slash < 0;
+				var name = isDirect ? rest : rest[..slash];
+				if (name.Length == 0)
+					continue;
+
+				if (!byName.TryGetValue(name, out var node))
 				{
-					var isLeaf = i == parts.Length - 1;
-					var name = parts[i];
-					var child = node.Children.FirstOrDefault(existing => existing.Name == name);
-					if (child is null)
-					{
-						child = new ArchiveNode(name, !isLeaf || entry.IsDirectory);
-						node.Children.Add(child);
-					}
+					var nodePath = prefix + name;
+					node = new ArchiveNode(name, nodePath, !isDirect || entry.IsDirectory, BuildChildren);
+					byName[name] = node;
+					nodes.Add(node);
+				}
 
-					if (isLeaf && !entry.IsDirectory)
-					{
-						child.SizeText = entry.SizeText;
-						child.Size = entry.Size;
-						child.EntryIndex = entry.Index;
-					}
-
-					node = child;
+				if (isDirect && !entry.IsDirectory)
+				{
+					node.SizeText = entry.SizeText;
+					node.Size = entry.Size;
+					node.EntryIndex = entry.Index;
 				}
 			}
 
-			ComputeSizes(root);
-			SortNode(root, SortIndex);
+			foreach (var node in nodes)
+			{
+				if (node.IsDirectory)
+				{
+					node.Size = folderSizes.GetValueOrDefault(node.Path);
+					node.SizeText = node.Size.ToLongSizeString();
+				}
+			}
 
 			if (search.Length > 0)
-				FilterNode(root, search);
+				nodes.RemoveAll(node => !node.IsDirectory && !node.Name.Contains(search, StringComparison.OrdinalIgnoreCase));
 
-			foreach (var child in root.Children)
-				child.IsExpanded = root.Children.Count <= 10;
+			nodes.Sort((a, b) => CompareNodes(a, b, SortIndex));
 
-			RootNodes = root.Children;
+			return nodes;
 		}
 
-		private static ulong ComputeSizes(ArchiveNode node)
+		/// <summary>
+		/// Pre-computes every folder's total size in a single pass so lazy nodes do not recurse.
+		/// </summary>
+		private Dictionary<string, ulong> ComputeFolderSizes()
 		{
-			if (!node.IsDirectory)
-				return node.Size;
+			var sizes = new Dictionary<string, ulong>(StringComparer.OrdinalIgnoreCase);
 
-			var total = 0UL;
-			foreach (var child in node.Children)
-				total += ComputeSizes(child);
+			foreach (var entry in entries)
+			{
+				if (entry.IsDirectory)
+					continue;
 
-			node.Size = total;
-			node.SizeText = total.ToLongSizeString();
+				var full = entry.Name.Replace('\\', '/');
+				var index = full.LastIndexOf('/');
+				while (index > 0)
+				{
+					var folder = full[..index];
+					sizes[folder] = sizes.GetValueOrDefault(folder) + entry.Size;
+					index = folder.LastIndexOf('/');
+				}
+			}
 
-			return total;
-		}
-
-		private static void SortNode(ArchiveNode node, int sortIndex)
-		{
-			node.Children.Sort((a, b) => CompareNodes(a, b, sortIndex));
-
-			foreach (var child in node.Children)
-				SortNode(child, sortIndex);
+			return sizes;
 		}
 
 		private static int CompareNodes(ArchiveNode a, ArchiveNode b, int sortIndex)
@@ -265,31 +297,31 @@ namespace Files.App.ViewModels.Previews
 				_ => string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase),
 			};
 		}
-
-		private static bool FilterNode(ArchiveNode node, string search)
-		{
-			node.Children.RemoveAll(child => !FilterNode(child, search));
-
-			return node.Name.Contains(search, StringComparison.OrdinalIgnoreCase) || node.Children.Count > 0;
-		}
 	}
 
 	public sealed class ArchiveNode
 	{
+		private readonly Func<string, IReadOnlyList<ArchiveNode>>? childrenFactory;
+		private IReadOnlyList<ArchiveNode>? children;
+
 		public string Name { get; }
+		public string Path { get; }
 		public string DisplayName { get; }
 		public bool IsDirectory { get; }
 		public bool IsExpanded { get; set; }
 		public ulong Size { get; set; }
 		public string SizeText { get; set; } = string.Empty;
 		public int EntryIndex { get; set; } = -1;
-		public List<ArchiveNode> Children { get; } = [];
 
-		public ArchiveNode(string name, bool isDirectory)
+		public IReadOnlyList<ArchiveNode> Children => children ??= childrenFactory?.Invoke(Path) ?? [];
+
+		public ArchiveNode(string name, string path, bool isDirectory, Func<string, IReadOnlyList<ArchiveNode>>? childrenFactory = null)
 		{
 			Name = name;
+			Path = path;
 			IsDirectory = isDirectory;
 			DisplayName = isDirectory ? $"{name}/" : name;
+			this.childrenFactory = childrenFactory;
 		}
 	}
 
