@@ -18,6 +18,26 @@ namespace Files.App.ViewModels.Previews
 	{
 		private const int CellWidth = 20;
 
+		private List<string> sheetTexts = [];
+		private IReadOnlyList<string> sheets = [];
+		private int selectedSheetIndex;
+
+		public IReadOnlyList<string> Sheets
+		{
+			get => sheets;
+			private set => SetProperty(ref sheets, value);
+		}
+
+		public int SelectedSheetIndex
+		{
+			get => selectedSheetIndex;
+			set
+			{
+				if (SetProperty(ref selectedSheetIndex, value) && value >= 0 && value < sheetTexts.Count)
+					TextValue = sheetTexts[value];
+			}
+		}
+
 		public XlsxPreviewViewModel(ListedItem item)
 			: base(item)
 		{
@@ -27,9 +47,21 @@ namespace Files.App.ViewModels.Previews
 		{
 			try
 			{
-				var text = await Task.Run(() => ExtractText(Item.ItemPath!));
-				var value = text.Left(Constants.PreviewPane.TextCharacterLimit);
-				await MainWindow.Instance.DispatcherQueue.EnqueueOrInvokeAsync(() => TextValue = value);
+				var extracted = await Task.Run(() => ExtractSheets(Item.ItemPath!));
+				await MainWindow.Instance.DispatcherQueue.EnqueueOrInvokeAsync(() =>
+				{
+					sheetTexts = extracted
+						.Select(sheet => sheet.Text.Left(Constants.PreviewPane.TextCharacterLimit))
+						.ToList();
+					Sheets = extracted.Select(sheet => sheet.Name).ToList();
+
+					if (sheetTexts.Count > 0)
+					{
+						selectedSheetIndex = 0;
+						OnPropertyChanged(nameof(SelectedSheetIndex));
+						TextValue = sheetTexts[0];
+					}
+				});
 			}
 			catch (Exception e)
 			{
@@ -39,7 +71,7 @@ namespace Files.App.ViewModels.Previews
 			return [];
 		}
 
-		private static string ExtractText(string path)
+		private static List<(string Name, string Text)> ExtractSheets(string path)
 		{
 			using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
 			using var archive = new ZipArchive(stream, ZipArchiveMode.Read);
@@ -50,7 +82,7 @@ namespace Files.App.ViewModels.Previews
 			if (sheets.Count == 0)
 				sheets.Add(("Sheet1", "xl/worksheets/sheet1.xml"));
 
-			var builder = new StringBuilder();
+			var result = new List<(string Name, string Text)>();
 			foreach (var (name, sheetPath) in sheets)
 			{
 				var entry = archive.GetEntry(sheetPath);
@@ -60,8 +92,6 @@ namespace Files.App.ViewModels.Previews
 				using var sheetStream = entry.Open();
 				var sheet = XDocument.Load(sheetStream);
 				var ns = sheet.Root!.Name.Namespace;
-
-				builder.AppendLine($"=== {name} ===");
 
 				// Read all rows first so each column can be padded to its widest cell.
 				var rows = new List<List<(int Column, string Value)>>();
@@ -84,13 +114,14 @@ namespace Files.App.ViewModels.Previews
 					foreach (var (column, value) in row)
 						widths[column] = Math.Max(widths.GetValueOrDefault(column), Math.Min(value.Length, CellWidth));
 
+				var builder = new StringBuilder();
 				foreach (var row in rows)
 					builder.AppendLine(string.Concat(row.OrderBy(c => c.Column).Select(c => FormatCell(c.Value, widths.GetValueOrDefault(c.Column, CellWidth)))));
 
-				builder.AppendLine();
+				result.Add((name, builder.ToString()));
 			}
 
-			return builder.ToString();
+			return result;
 		}
 
 		private static List<(string Name, string Path)> ReadSheets(ZipArchive archive)

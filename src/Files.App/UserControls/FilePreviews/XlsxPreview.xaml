@@ -5,17 +5,25 @@
 	xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
 	xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
 	xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+	xmlns:vms="using:Files.App.ViewModels.Previews"
 	mc:Ignorable="d">
 
-	<Border>
-		<ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
+	<Grid RowDefinitions="Auto,*">
+		<ComboBox
+			Grid.Row="0"
+			Margin="0,0,0,4"
+			HorizontalAlignment="Left"
+			ItemsSource="{x:Bind ViewModel.Sheets, Mode=OneWay}"
+			SelectedIndex="{x:Bind ViewModel.SelectedSheetIndex, Mode=TwoWay}" />
 
-			<TextBlock
-				FontFamily="Consolas"
-				FontSize="12"
-				IsTextSelectionEnabled="True"
-				Text="{x:Bind ViewModel.TextValue, Mode=OneWay}" />
-
-		</ScrollViewer>
-	</Border>
+		<Border Grid.Row="1">
+			<ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
+				<TextBlock
+					FontFamily="Consolas"
+					FontSize="12"
+					IsTextSelectionEnabled="True"
+					Text="{x:Bind ViewModel.TextValue, Mode=OneWay}" />
+			</ScrollViewer>
+		</Border>
+	</Grid>
 </UserControl>
