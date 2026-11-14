@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.UI.Content;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Hosting;
+using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.Marshalling;
 using Windows.Win32;
@@ -43,6 +44,8 @@ namespace Files.App.ViewModels.Previews
 		bool _isOfficePreview = false;
 		bool _unloaded;
 		unsafe char* _pszClassName;
+		Thread? _handlerThread;
+		BlockingCollection<Action>? _handlerQueue;
 
 		// Constructor
 
@@ -94,7 +97,8 @@ namespace Files.App.ViewModels.Previews
 			if (_hWnd != HWND.Null)
 				PInvoke.SetWindowPos(_hWnd, new(0), size.left, size.top, size.Width, size.Height, SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE);
 
-			_previewHandler?.ResetBounds(new(0, 0, size.Width, size.Height));
+			// The handler lives on the dedicated STA thread; keep its bounds update off the UI thread.
+			_handlerQueue?.Add(() => _previewHandler?.ResetBounds(new(0, 0, size.Width, size.Height)));
 
 			if (_contentExternalOutputLink is not null)
 				_contentExternalOutputLink.PlacementVisual.Size = new(size.Width, size.Height);
@@ -102,47 +106,27 @@ namespace Files.App.ViewModels.Previews
 
 		private unsafe LRESULT WndProc(HWND hwnd, uint msg, WPARAM wParam, LPARAM lParam)
 		{
-			if (msg is PInvoke.WM_CREATE)
-			{
-				var clsid = FindPreviewHandlerFor(Item.FileExtension!, hwnd);
-
-				_isOfficePreview = new Guid?[]
-				{
-					Guid.Parse("84F66100-FF7C-4fb4-B0C0-02CD7FB668FE"), // preview handler for Word files
-					Guid.Parse("65235197-874B-4A07-BDC5-E65EA825B718"), // preview handler for PowerPoint files
-					Guid.Parse("00020827-0000-0000-C000-000000000046")  // preview handler for Excel files
-				}.Contains(clsid);
-
-				try
-				{
-					_previewHandler = new PreviewHandler(clsid!.Value, hwnd);
-					_previewHandler.InitWithFileWithEveryWay(Item.ItemPath!);
-					_previewHandler.DoPreview();
-				}
-				catch
-				{
-					// Do not call UnloadPreview during WM_CREATE: _hWnd is not assigned yet and the
-					// window is still being created. Dispose the handler and fail the window creation.
-					_previewHandler?.Dispose();
-					_previewHandler = null;
-					return new LRESULT(-1);
-				}
-			}
-			else if (msg is PInvoke.WM_DESTROY)
-			{
-				if (_previewHandler is not null)
-				{
-					_previewHandler.Dispose();
-					_previewHandler = null;
-				}
-			}
-
+			// The preview handler is created and disposed on the dedicated STA thread from
+			// LoadPreview/UnloadPreview, so the window procedure has no handler to manage.
 			return PInvoke.DefWindowProc(hwnd, msg, wParam, lParam);
 		}
 
 		public unsafe void LoadPreview(UIElement presenter)
 		{
 			App.Logger.LogInformation($"ShellPreview.LoadPreview: Item={LogPathHelper.RedactPath(Item?.ItemPath)}");
+
+			var loadStart = Environment.TickCount64;
+			var clsid = FindPreviewHandlerFor(Item!.FileExtension!, HWND.Null);
+			if (clsid is null)
+			{
+				App.Logger.LogWarning($"ShellPreview: no preview handler registered for '{Item.FileExtension}'");
+				return;
+			}
+
+			_isOfficePreview =
+				clsid.Value == Guid.Parse("84F66100-FF7C-4fb4-B0C0-02CD7FB668FE") ||
+				clsid.Value == Guid.Parse("65235197-874B-4A07-BDC5-E65EA825B718") ||
+				clsid.Value == Guid.Parse("00020827-0000-0000-C000-000000000046");
 
 			var parent = MainWindow.Instance.WindowHandle;
 			var hInst = PInvoke.GetModuleHandle(default(PWSTR));
@@ -193,6 +177,60 @@ namespace Files.App.ViewModels.Previews
 			}
 
 			_ = ChildWindowToXaml(parent, presenter);
+			App.Logger.LogInformation($"ShellPreview: UI setup ready in {Environment.TickCount64 - loadStart} ms");
+
+			// Creating the Shell handler and initializing its document blocks for seconds on Office
+			// files, so run it on a dedicated STA thread to keep the UI thread responsive.
+			var handlerClsid = clsid.Value;
+			var handlerHwnd = (nint)_hWnd;
+			var handlerPath = Item.ItemPath!;
+			EnsureHandlerThread();
+			_handlerQueue!.Add(() =>
+			{
+				var handlerStart = Environment.TickCount64;
+				try
+				{
+					_previewHandler?.Dispose();
+					_previewHandler = new PreviewHandler(handlerClsid, handlerHwnd);
+					_previewHandler.InitWithFileWithEveryWay(handlerPath);
+					_previewHandler.DoPreview();
+					App.Logger.LogInformation($"ShellPreview: handler ready in {Environment.TickCount64 - handlerStart} ms");
+				}
+				catch (Exception ex)
+				{
+					App.Logger.LogWarning(ex, "ShellPreview: failed to create preview handler");
+					_previewHandler?.Dispose();
+					_previewHandler = null;
+				}
+			});
+		}
+
+		private void EnsureHandlerThread()
+		{
+			if (_handlerThread is not null)
+				return;
+
+			_handlerQueue = new BlockingCollection<Action>();
+			_handlerThread = new Thread(() =>
+			{
+				foreach (var action in _handlerQueue.GetConsumingEnumerable())
+				{
+					try
+					{
+						action();
+					}
+					catch (Exception ex)
+					{
+						App.Logger.LogWarning(ex, "ShellPreview: handler thread action failed");
+					}
+				}
+			})
+			{
+				IsBackground = true,
+				Name = $"{nameof(ShellPreviewViewModel)}-handler"
+			};
+			_handlerThread.SetApartmentState(ApartmentState.STA);
+			_handlerThread.Start();
 		}
 
 		private unsafe bool ChildWindowToXaml(nint parent, UIElement presenter)
@@ -272,6 +310,19 @@ namespace Files.App.ViewModels.Previews
 			if (_unloaded)
 				return;
 			_unloaded = true;
+
+			// Dispose the handler on its own STA thread and let that thread exit. This never blocks
+			// the UI thread on the multi-second Office handler teardown.
+			if (_handlerQueue is not null)
+			{
+				_handlerQueue.Add(() =>
+				{
+					_previewHandler?.Dispose();
+					_previewHandler = null;
+				});
+				_handlerQueue.CompleteAdding();
+				_handlerQueue = null;
+			}
 
 			if (_hWnd != HWND.Null)
 			{
