@@ -139,6 +139,7 @@ namespace Files.App.ViewModels.Previews
 				}
 			}
 
+			ComputeSizes(root);
 			SortNode(root, SortIndex);
 
 			if (search.Length > 0)
@@ -148,6 +149,21 @@ namespace Files.App.ViewModels.Previews
 				child.IsExpanded = root.Children.Count <= 10;
 
 			RootNodes = root.Children;
+		}
+
+		private static ulong ComputeSizes(ArchiveNode node)
+		{
+			if (!node.IsDirectory)
+				return node.Size;
+
+			var total = 0UL;
+			foreach (var child in node.Children)
+				total += ComputeSizes(child);
+
+			node.Size = total;
+			node.SizeText = total.ToLongSizeString();
+
+			return total;
 		}
 
 		private static void SortNode(ArchiveNode node, int sortIndex)
