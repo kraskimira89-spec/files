@@ -62,7 +62,9 @@ namespace Files.App.ViewModels.Previews
 			var builder = new StringBuilder(text.Length);
 			foreach (var ch in text)
 			{
-				if (ch is '\n' or '\t' || ch >= ' ')
+				if (ch is '\r')
+					builder.Append('\n');
+				else if (ch is '\n' or '\t' || ch >= ' ')
 					builder.Append(ch);
 			}
 
