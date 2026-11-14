@@ -501,16 +501,23 @@ namespace Files.App.Views
 
 		private async void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
 		{
-			if (e.PropertyName == nameof(ViewModel.ShouldPreviewPaneBeActive))
+			try
 			{
-				var infoPaneViewModel = Ioc.Default.GetRequiredService<InfoPaneViewModel>();
-				if (ViewModel.ShouldPreviewPaneBeActive)
-					await infoPaneViewModel.UpdateSelectedItemPreviewAsync();
-				else
-					infoPaneViewModel.UnloadPreview();
+				if (e.PropertyName == nameof(ViewModel.ShouldPreviewPaneBeActive))
+				{
+					var infoPaneViewModel = Ioc.Default.GetRequiredService<InfoPaneViewModel>();
+					if (ViewModel.ShouldPreviewPaneBeActive)
+						await infoPaneViewModel.UpdateSelectedItemPreviewAsync();
+					else
+						infoPaneViewModel.UnloadPreview();
+				}
+				else if (e.PropertyName == nameof(ViewModel.SelectedTabItem))
+					HandleSidebarTabChange();
 			}
-			else if (e.PropertyName == nameof(ViewModel.SelectedTabItem))
-				HandleSidebarTabChange();
+			catch (Exception ex)
+			{
+				App.Logger.LogWarning(ex, ex.Message);
+			}
 		}
 
 		private void HandleSidebarTabChange()
