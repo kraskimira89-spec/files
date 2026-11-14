@@ -26,7 +26,8 @@ namespace Files.App.ViewModels.Previews
 			try
 			{
 				var text = await Task.Run(() => ExtractText(Item.ItemPath!));
-				TextValue = text.Left(Constants.PreviewPane.TextCharacterLimit);
+				var value = text.Left(Constants.PreviewPane.TextCharacterLimit);
+				await MainWindow.Instance.DispatcherQueue.EnqueueOrInvokeAsync(() => TextValue = value);
 			}
 			catch (Exception e)
 			{

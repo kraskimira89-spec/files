@@ -30,7 +30,8 @@ namespace Files.App.ViewModels.Previews
 				details.Add(GetFileProperty("PropertyLineCount", lineCount));
 				details.Add(GetFileProperty("PropertyWordCount", wordCount));
 
-				TextValue = text.Left(Constants.PreviewPane.TextCharacterLimit);
+				var value = text.Left(Constants.PreviewPane.TextCharacterLimit);
+				await MainWindow.Instance.DispatcherQueue.EnqueueOrInvokeAsync(() => TextValue = value);
 			}
 			catch (Exception e)
 			{

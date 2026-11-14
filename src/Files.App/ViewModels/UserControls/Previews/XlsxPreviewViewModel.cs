@@ -28,7 +28,8 @@ namespace Files.App.ViewModels.Previews
 			try
 			{
 				var text = await Task.Run(() => ExtractText(Item.ItemPath!));
-				TextValue = text.Left(Constants.PreviewPane.TextCharacterLimit);
+				var value = text.Left(Constants.PreviewPane.TextCharacterLimit);
+				await MainWindow.Instance.DispatcherQueue.EnqueueOrInvokeAsync(() => TextValue = value);
 			}
 			catch (Exception e)
 			{
@@ -61,6 +62,9 @@ namespace Files.App.ViewModels.Previews
 				var ns = sheet.Root!.Name.Namespace;
 
 				builder.AppendLine($"=== {name} ===");
+
+				// Read all rows first so each column can be padded to its widest cell.
+				var rows = new List<List<(int Column, string Value)>>();
 				foreach (var row in sheet.Descendants(ns + "row"))
 				{
 					var cells = new List<(int Column, string Value)>();
@@ -72,8 +76,16 @@ namespace Files.App.ViewModels.Previews
 					}
 
 					if (cells.Count > 0)
-						builder.AppendLine(string.Concat(cells.OrderBy(c => c.Column).Select(c => FormatCell(c.Value))));
+						rows.Add(cells);
 				}
+
+				var widths = new Dictionary<int, int>();
+				foreach (var row in rows)
+					foreach (var (column, value) in row)
+						widths[column] = Math.Max(widths.GetValueOrDefault(column), Math.Min(value.Length, CellWidth));
+
+				foreach (var row in rows)
+					builder.AppendLine(string.Concat(row.OrderBy(c => c.Column).Select(c => FormatCell(c.Value, widths.GetValueOrDefault(c.Column, CellWidth)))));
 
 				builder.AppendLine();
 			}
@@ -218,13 +230,13 @@ namespace Files.App.ViewModels.Previews
 			return index;
 		}
 
-		private static string FormatCell(string value)
+		private static string FormatCell(string value, int width)
 		{
 			var singleLine = value.Replace('\r', ' ').Replace('\n', ' ').Trim();
-			if (singleLine.Length > CellWidth)
-				return string.Concat(singleLine.AsSpan(0, CellWidth - 1), "…");
+			if (singleLine.Length > width)
+				return string.Concat(singleLine.AsSpan(0, width - 1), "…");
 
-			return singleLine.PadRight(CellWidth);
+			return singleLine.PadRight(width + 1);
 		}
 	}
 }

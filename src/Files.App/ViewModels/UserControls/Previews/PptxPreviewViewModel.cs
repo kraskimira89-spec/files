@@ -11,12 +11,13 @@ using System.Xml.Linq;
 namespace Files.App.ViewModels.Previews
 {
 	/// <summary>
-	/// Renders each slide of a .pptx — its text and embedded images — straight from the package,
-	/// avoiding the slow Shell preview handler.
+	/// Renders each slide of a .pptx — its text, SmartArt diagram text and embedded images — straight
+	/// from the package, avoiding the slow Shell preview handler.
 	/// </summary>
 	public sealed partial class PptxPreviewViewModel : BasePreviewModel
 	{
 		private static readonly XNamespace DrawingML = "http://schemas.openxmlformats.org/drawingml/2006/main";
+		private static readonly XNamespace DiagramML = "http://schemas.openxmlformats.org/drawingml/2006/diagram";
 		private static readonly XNamespace Relationships = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 
 		private IReadOnlyList<PptxSlide> slides = [];
@@ -35,7 +36,27 @@ namespace Files.App.ViewModels.Previews
 		{
 			try
 			{
-				Slides = await ExtractSlidesAsync(Item.ItemPath!);
+				var slidesData = await Task.Run(() => ExtractSlides(Item.ItemPath!));
+
+				// Decode the images and publish the slides on the UI thread.
+				await MainWindow.Instance.DispatcherQueue.EnqueueOrInvokeAsync(async () =>
+				{
+					var built = new List<PptxSlide>();
+					foreach (var data in slidesData)
+					{
+						var images = new List<BitmapImage>();
+						foreach (var bytes in data.ImageBytes)
+						{
+							var image = await bytes.ToBitmapAsync();
+							if (image is not null)
+								images.Add(image);
+						}
+
+						built.Add(new PptxSlide(data.NumberText, data.Text, images));
+					}
+
+					Slides = built;
+				});
 			}
 			catch (Exception e)
 			{
@@ -45,9 +66,9 @@ namespace Files.App.ViewModels.Previews
 			return [];
 		}
 
-		private static async Task<IReadOnlyList<PptxSlide>> ExtractSlidesAsync(string path)
+		private static List<PptxSlideData> ExtractSlides(string path)
 		{
-			var slides = new List<PptxSlide>();
+			var slides = new List<PptxSlideData>();
 
 			using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
 			using var archive = new ZipArchive(stream, ZipArchiveMode.Read);
@@ -59,17 +80,8 @@ namespace Files.App.ViewModels.Previews
 				if (entry is null)
 					continue;
 
-				var (text, imageBytes) = await Task.Run(() => ExtractSlide(archive, entry, slidePath));
-
-				var images = new List<BitmapImage>();
-				foreach (var bytes in imageBytes)
-				{
-					var image = await bytes.ToBitmapAsync();
-					if (image is not null)
-						images.Add(image);
-				}
-
-				slides.Add(new PptxSlide($"Slide {index}", text, images));
+				var (text, imageBytes) = ExtractSlide(archive, entry, slidePath);
+				slides.Add(new PptxSlideData($"Slide {index}", text, imageBytes));
 				index++;
 			}
 
@@ -84,7 +96,7 @@ namespace Files.App.ViewModels.Previews
 
 			var images = new List<byte[]>();
 
-			// Relationship id -> media part path for this slide.
+			// Relationship id -> part path for this slide (images and SmartArt data).
 			var targets = new Dictionary<string, string>();
 			var relsEntry = archive.GetEntry(SlideRelsPath(slidePath));
 			if (relsEntry is not null)
@@ -100,6 +112,7 @@ namespace Files.App.ViewModels.Previews
 				}
 			}
 
+			// Embedded pictures.
 			foreach (var blip in slide.Descendants(DrawingML + "blip"))
 			{
 				var embed = blip.Attribute(Relationships + "embed")?.Value;
@@ -116,7 +129,36 @@ namespace Files.App.ViewModels.Previews
 				images.Add(memory.ToArray());
 			}
 
-			return (text, images);
+			// SmartArt / diagram text (the data part referenced by r:dm).
+			var diagramText = new List<string>();
+			foreach (var graphicData in slide.Descendants(DrawingML + "graphicData"))
+			{
+				var relIds = graphicData.Element(DiagramML + "relIds");
+				if (relIds is null)
+					continue;
+
+				var dataId = relIds.Attribute(Relationships + "dm")?.Value;
+				if (dataId is null || !targets.TryGetValue(dataId, out var dataPath))
+					continue;
+
+				var dataEntry = archive.GetEntry(dataPath);
+				if (dataEntry is null)
+					continue;
+
+				using var dataStream = dataEntry.Open();
+				var data = XDocument.Load(dataStream);
+				diagramText.AddRange(data.Descendants(DiagramML + "pt")
+					.SelectMany(point => point.Descendants(DrawingML + "t").Select(run => run.Value))
+					.Where(value => !string.IsNullOrWhiteSpace(value)));
+			}
+
+			var fullText = text;
+			if (diagramText.Count > 0)
+				fullText = string.IsNullOrEmpty(text)
+					? $"Схема: {string.Join(", ", diagramText)}"
+					: $"{text}\nСхема: {string.Join(", ", diagramText)}";
+
+			return (fullText, images);
 		}
 
 		private static string SlideRelsPath(string slidePath)
@@ -148,7 +190,6 @@ namespace Files.App.ViewModels.Previews
 
 		private static List<string> ReadSlidePaths(ZipArchive archive)
 		{
-			// Relationship id -> slide part path.
 			var targets = new Dictionary<string, string>();
 			var relsEntry = archive.GetEntry("ppt/_rels/presentation.xml.rels");
 			if (relsEntry is not null)
@@ -179,7 +220,6 @@ namespace Files.App.ViewModels.Previews
 				}
 			}
 
-			// Fallback to the raw part order when the presentation part is missing or malformed.
 			if (slides.Count == 0)
 			{
 				slides.AddRange(archive.Entries
@@ -192,6 +232,8 @@ namespace Files.App.ViewModels.Previews
 			return slides;
 		}
 	}
+
+	internal sealed record PptxSlideData(string NumberText, string Text, IReadOnlyList<byte[]> ImageBytes);
 
 	public sealed class PptxSlide
 	{
