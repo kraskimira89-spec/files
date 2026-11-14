@@ -4,6 +4,7 @@
 using CommunityToolkit.WinUI;
 using Files.App.Actions;
 using Files.App.Controls;
+using Files.App.ViewModels.UserControls;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Input;
@@ -83,6 +84,56 @@ namespace Files.App.Views
 			var command = ViewModel.NavigateToNumberedTabKeyboardAcceleratorCommand;
 			if (command.CanExecute(e))
 				command.Execute(e);
+		}
+
+		private bool isQuickLookOpen;
+
+		private void QuickLook_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+		{
+			if (isQuickLookOpen || ContentPageContext.SelectedItem is not { } item)
+				return;
+
+			// Never take the space bar away from text entry controls.
+			if (FocusManager.GetFocusedElement(Content.XamlRoot) is TextBox or RichEditBox or PasswordBox)
+				return;
+
+			args.Handled = true;
+			isQuickLookOpen = true;
+			_ = ShowQuickLookAsync(item);
+		}
+
+		private async Task ShowQuickLookAsync(ListedItem item)
+		{
+			InfoPaneViewModel? viewModel = null;
+
+			try
+			{
+				viewModel = new InfoPaneViewModel();
+				viewModel.SelectedItem = item;
+				await viewModel.UpdateSelectedItemPreviewAsync();
+
+				if (viewModel.PreviewPaneContent is not { } content)
+					return;
+
+				var dialog = new ContentDialog
+				{
+					Title = item.Name,
+					Content = content,
+					CloseButtonText = Strings.Close.ToLocalized(),
+					FullSizeDesired = true,
+				};
+
+				await SetContentDialogRoot(dialog).TryShowAsync();
+			}
+			catch (Exception e)
+			{
+				App.Logger.LogWarning(e, "Quick Look failed");
+			}
+			finally
+			{
+				viewModel?.Dispose();
+				isQuickLookOpen = false;
+			}
 		}
 
 		private async Task AppRunningAsAdminPromptAsync()
