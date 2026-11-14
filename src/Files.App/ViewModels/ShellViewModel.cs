@@ -803,24 +803,31 @@ namespace Files.App.ViewModels
 
 		private async void RecycleBinItemCreatedAsync(object? sender, FileSystemEventArgs e)
 		{
-			if (!Constants.UserEnvironmentPaths.RecycleBinPath.Equals(CurrentFolder?.ItemPath, StringComparison.OrdinalIgnoreCase))
-				return;
+			try
+			{
+				if (!Constants.UserEnvironmentPaths.RecycleBinPath.Equals(CurrentFolder?.ItemPath, StringComparison.OrdinalIgnoreCase))
+					return;
 
-			using var folderItem = SafetyExtensions.IgnoreExceptions(() => new ShellItem(ShellPath.GetRecycleBinParsingName(e.FullPath)));
-			if (folderItem is null)
-				return;
+				using var folderItem = SafetyExtensions.IgnoreExceptions(() => new ShellItem(ShellPath.GetRecycleBinParsingName(e.FullPath)));
+				if (folderItem is null)
+					return;
 
-			var shellFileItem = ShellFolderExtensions.GetShellFileItem(folderItem);
-			if (shellFileItem is null)
-				throw new InvalidDataException("The recycle-bin item could not be converted to a shell item.");
+				var shellFileItem = ShellFolderExtensions.GetShellFileItem(folderItem);
+				if (shellFileItem is null)
+					throw new InvalidDataException("The recycle-bin item could not be converted to a shell item.");
 
-			var newListedItem = await AddFileOrFolderFromShellFile(shellFileItem);
-			if (newListedItem is null)
-				return;
+				var newListedItem = await AddFileOrFolderFromShellFile(shellFileItem);
+				if (newListedItem is null)
+					return;
 
-			await AddFileOrFolderAsync(newListedItem);
-			await OrderFilesAndFoldersAsync();
-			await ApplyFilesAndFoldersChangesAsync();
+				await AddFileOrFolderAsync(newListedItem);
+				await OrderFilesAndFoldersAsync();
+				await ApplyFilesAndFoldersChangesAsync();
+			}
+			catch (Exception ex)
+			{
+				App.Logger.LogWarning(ex, ex.Message);
+			}
 		}
 
 		private async void FolderSizeProvider_SizeChanged(object? sender, Services.SizeProvider.SizeChangedEventArgs e)
@@ -2806,22 +2813,29 @@ namespace Files.App.ViewModels
 
 		private async void ItemQueryResult_ContentsChanged(IStorageQueryResultBase sender, object args)
 		{
-			// Query options have to be reapplied otherwise old results are returned
-			var options = new QueryOptions()
+			try
 			{
-				FolderDepth = FolderDepth.Shallow,
-				IndexerOption = IndexerOption.OnlyUseIndexerAndOptimizeForIndexedProperties
-			};
+				// Query options have to be reapplied otherwise old results are returned
+				var options = new QueryOptions()
+				{
+					FolderDepth = FolderDepth.Shallow,
+					IndexerOption = IndexerOption.OnlyUseIndexerAndOptimizeForIndexedProperties
+				};
 
-			options.SetPropertyPrefetch(PropertyPrefetchOptions.None, null);
-			options.SetThumbnailPrefetch(ThumbnailMode.ListView, 0, ThumbnailOptions.ReturnOnlyIfCached);
+				options.SetPropertyPrefetch(PropertyPrefetchOptions.None, null);
+				options.SetThumbnailPrefetch(ThumbnailMode.ListView, 0, ThumbnailOptions.ReturnOnlyIfCached);
 
-			sender.ApplyNewQueryOptions(options);
+				sender.ApplyNewQueryOptions(options);
 
-			await dispatcherQueue.EnqueueOrInvokeAsync(() =>
+				await dispatcherQueue.EnqueueOrInvokeAsync(() =>
+				{
+					RefreshItems(null);
+				});
+			}
+			catch (Exception ex)
 			{
-				RefreshItems(null);
-			});
+				App.Logger.LogWarning(ex, ex.Message);
+			}
 		}
 
 		private void WatchForDirectoryChanges(string path, CloudDriveSyncStatus syncStatus)
