@@ -9,6 +9,13 @@ namespace Files.App.ViewModels.Previews
 {
 	public sealed partial class ArchivePreviewViewModel : BasePreviewModel
 	{
+		private IReadOnlyList<ArchiveEntry> entries = [];
+		public IReadOnlyList<ArchiveEntry> Entries
+		{
+			get => entries;
+			private set => SetProperty(ref entries, value);
+		}
+
 		public ArchivePreviewViewModel(ListedItem item)
 			: base(item)
 		{
@@ -58,6 +65,14 @@ namespace Files.App.ViewModels.Previews
 
 			folderCount = (int)zipFile.FilesCount - fileCount;
 
+			Entries = zipFile.ArchiveFileData
+				.OrderBy(entry => entry.FileName, StringComparer.OrdinalIgnoreCase)
+				.Select(entry => new ArchiveEntry(
+					entry.FileName,
+					entry.IsDirectory ? string.Empty : entry.Size.ToLongSizeString(),
+					entry.IsDirectory))
+				.ToList();
+
 			string propertyItemCount = Strings.DetailsArchiveItems.GetLocalizedFormatResource(zipFile.FilesCount, fileCount, folderCount);
 			details.Add(GetFileProperty("PropertyItemCount", propertyItemCount));
 			details.Add(GetFileProperty("PropertyUncompressedSize", totalSize.ToLongSizeString()));
@@ -67,4 +82,6 @@ namespace Files.App.ViewModels.Previews
 			return details;
 		}
 	}
+
+	public sealed record ArchiveEntry(string Name, string SizeText, bool IsDirectory);
 }

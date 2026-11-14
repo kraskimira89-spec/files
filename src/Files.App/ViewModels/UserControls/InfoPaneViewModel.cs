@@ -308,7 +308,7 @@ namespace Files.App.ViewModels.UserControls
 			if (FileExtensionHelpers.IsBrowsableZipFile(item.FileExtension, out _))
 			{
 				var model = new ArchivePreviewViewModel(item);
-				return (new BasicPreview(model), model.LoadAsync());
+				return (new ArchivePreview(model), model.LoadAsync());
 			}
 
 			if (item.PrimaryItemAttribute == StorageItemTypes.Folder)
