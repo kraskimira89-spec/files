@@ -8,38 +8,39 @@
 	xmlns:previews="using:Files.App.ViewModels.Previews"
 	mc:Ignorable="d">
 
-	<ListView ItemsSource="{x:Bind ViewModel.Slides, Mode=OneWay}" SelectionMode="None">
-		<ListView.ItemTemplate>
+	<GridView
+		ItemsSource="{x:Bind ViewModel.Slides, Mode=OneWay}"
+		SelectionMode="None">
+
+		<GridView.ItemsPanel>
+			<ItemsPanelTemplate>
+				<ItemsWrapGrid Orientation="Horizontal" />
+			</ItemsPanelTemplate>
+		</GridView.ItemsPanel>
+
+		<GridView.ItemTemplate>
 			<DataTemplate x:DataType="previews:PptxSlide">
 				<Grid
-					Margin="0,0,0,10"
-					ColumnDefinitions="160,*"
-					ColumnSpacing="12">
+					Width="200"
+					Margin="0,0,12,12"
+					RowDefinitions="Auto,Auto,Auto">
 					<Image
-						Grid.Column="0"
-						MaxHeight="100"
-						HorizontalAlignment="Left"
+						Grid.Row="0"
+						Height="112"
 						Stretch="Uniform"
 						Source="{x:Bind Thumbnail}" />
-
-					<StackPanel Grid.Column="1" VerticalAlignment="Top">
-						<TextBlock FontWeight="SemiBold" Text="{x:Bind NumberText}" />
-						<TextBlock
-							MaxLines="4"
-							Text="{x:Bind Text}"
-							TextTrimming="CharacterEllipsis"
-							TextWrapping="Wrap" />
-						<TextBlock
-							FontStyle="Italic"
-							MaxLines="2"
-							Opacity="0.7"
-							Text="{x:Bind Notes}"
-							TextTrimming="CharacterEllipsis"
-							TextWrapping="Wrap"
-							Visibility="{x:Bind HasNotes}" />
-					</StackPanel>
+					<TextBlock
+						Grid.Row="1"
+						FontWeight="SemiBold"
+						Text="{x:Bind NumberText}" />
+					<TextBlock
+						Grid.Row="2"
+						MaxLines="2"
+						Text="{x:Bind Text}"
+						TextTrimming="CharacterEllipsis"
+						TextWrapping="Wrap" />
 				</Grid>
 			</DataTemplate>
-		</ListView.ItemTemplate>
-	</ListView>
+		</GridView.ItemTemplate>
+	</GridView>
 </UserControl>
