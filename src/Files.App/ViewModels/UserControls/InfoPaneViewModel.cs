@@ -394,7 +394,7 @@ namespace Files.App.ViewModels.UserControls
 			if (ext is ".pptx")
 			{
 				var model = new PptxPreviewViewModel(item);
-				return (new TextPreview(model), model.LoadAsync());
+				return (new PptxPreview(model), model.LoadAsync());
 			}
 
 			if (ext is ".doc")

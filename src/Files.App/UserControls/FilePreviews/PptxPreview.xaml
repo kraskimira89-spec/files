@@ -1,0 +1,31 @@
+<!--  Copyright (c) Files Community. Licensed under the MIT License.  -->
+<UserControl
+	x:Class="Files.App.UserControls.FilePreviews.PptxPreview"
+	xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+	xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+	xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+	xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+	xmlns:previews="using:Files.App.ViewModels.Previews"
+	mc:Ignorable="d">
+
+	<ListView ItemsSource="{x:Bind ViewModel.Slides, Mode=OneWay}" SelectionMode="None">
+		<ListView.ItemTemplate>
+			<DataTemplate x:DataType="previews:PptxSlide">
+				<StackPanel Margin="0,0,0,16">
+					<TextBlock FontWeight="SemiBold" Text="{x:Bind NumberText}" />
+					<TextBlock Text="{x:Bind Text}" TextWrapping="Wrap" />
+					<ItemsControl ItemsSource="{x:Bind Images}">
+						<ItemsControl.ItemTemplate>
+							<DataTemplate>
+								<Image
+									MaxWidth="400"
+									Margin="0,6,0,0"
+									Source="{Binding}" />
+							</DataTemplate>
+						</ItemsControl.ItemTemplate>
+					</ItemsControl>
+				</StackPanel>
+			</DataTemplate>
+		</ListView.ItemTemplate>
+	</ListView>
+</UserControl>
