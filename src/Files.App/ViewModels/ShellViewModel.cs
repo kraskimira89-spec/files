@@ -1598,7 +1598,7 @@ namespace Files.App.ViewModels
 
 										retryCts.Dispose();
 
-										App.Logger.LogInformation("Timer-based thumbnail retry firing [{Id}] '{Extension}'.", item.GetRequiredPath().GetHashCode(), Path.GetExtension(item.ItemPath));
+										App.Logger.LogDebug("Timer-based thumbnail retry firing [{Id}] '{Extension}'.", item.GetRequiredPath().GetHashCode(), Path.GetExtension(item.ItemPath));
 
 										item.NeedsDelayedThumbnailLoad = false;
 										return LoadThumbnailAsync(item, retryToken, scheduleTimerRetry: false);
@@ -1613,7 +1613,7 @@ namespace Files.App.ViewModels
 						}
 						else
 						{
-							App.Logger.LogWarning("Thumbnail load failed [{Id}] '{Extension}' on timer retry; awaiting next FILE_ACTION_MODIFIED.", item.GetRequiredPath().GetHashCode(), Path.GetExtension(item.ItemPath));
+							App.Logger.LogDebug("Thumbnail load failed [{Id}] '{Extension}' on timer retry; awaiting next FILE_ACTION_MODIFIED.", item.GetRequiredPath().GetHashCode(), Path.GetExtension(item.ItemPath));
 						}
 					}
 					else
