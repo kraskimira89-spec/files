@@ -223,6 +223,13 @@ namespace Files.App.ViewModels.UserControls
 				return;
 			}
 
+			// First frame: paint the list thumbnail immediately so the pane is not blank while the model loads.
+			if (item.FileImage is not null)
+			{
+				PreviewPaneContent = new BasicPreview(new BasicPreviewViewModel(item));
+				PreviewPaneState = SelectedDriveItem is not null ? PreviewPaneStates.DriveStorageDetailsAvailable : PreviewPaneStates.PreviewAndDetailsAvailable;
+			}
+
 			// Show the control immediately; finish loading under the same cancellation token.
 			var createSw = Stopwatch.StartNew();
 			var builtIn = CreateBuiltInPreviewControl(item, downloadItem);

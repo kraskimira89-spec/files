@@ -20,7 +20,7 @@ namespace Files.App.Helpers
 			try
 			{
 				using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-				Span<byte> head = stackalloc byte[8];
+				Span<byte> head = stackalloc byte[12];
 				var read = stream.Read(head);
 				if (read < 4)
 					return null;
@@ -57,6 +57,22 @@ namespace Files.App.Helpers
 					return ".tif";
 				if (head[0] == 0x7B && head[1] == 0x5C && head[2] == 0x72 && head[3] == 0x74)
 					return ".rtf";
+
+				if (read >= 12)
+				{
+					// WebP: "RIFF" .... "WEBP".
+					if (head[0] == 0x52 && head[1] == 0x49 && head[2] == 0x46 && head[3] == 0x46 &&
+						head[8] == 0x57 && head[9] == 0x45 && head[10] == 0x42 && head[11] == 0x50)
+						return ".webp";
+
+					// HEIF/HEIC: ISO-BMFF "ftyp" box followed by a known brand.
+					if (head[4] == 0x66 && head[5] == 0x74 && head[6] == 0x79 && head[7] == 0x70)
+					{
+						var brand = $"{(char)head[8]}{(char)head[9]}{(char)head[10]}{(char)head[11]}";
+						if (brand is "heic" or "heix" or "hevc" or "hevx" or "mif1" or "msf1")
+							return ".heic";
+					}
+				}
 
 				return null;
 			}
