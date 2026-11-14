@@ -785,13 +785,20 @@ namespace Files.App.ViewModels
 
 		private async void RecycleBinItemDeletedAsync(object? sender, FileSystemEventArgs e)
 		{
-			if (!Constants.UserEnvironmentPaths.RecycleBinPath.Equals(CurrentFolder?.ItemPath, StringComparison.OrdinalIgnoreCase))
-				return;
+			try
+			{
+				if (!Constants.UserEnvironmentPaths.RecycleBinPath.Equals(CurrentFolder?.ItemPath, StringComparison.OrdinalIgnoreCase))
+					return;
 
-			var removedItem = await RemoveFileOrFolderAsync(e.FullPath);
+				var removedItem = await RemoveFileOrFolderAsync(e.FullPath);
 
-			if (removedItem is not null)
-				await ApplyFilesAndFoldersChangesAsync();
+				if (removedItem is not null)
+					await ApplyFilesAndFoldersChangesAsync();
+			}
+			catch (Exception ex)
+			{
+				App.Logger.LogWarning(ex, ex.Message);
+			}
 		}
 
 		private async void RecycleBinItemCreatedAsync(object? sender, FileSystemEventArgs e)
@@ -2496,15 +2503,11 @@ namespace Files.App.ViewModels
 					await Task.Run(async () =>
 					{
 						var enumSw = Stopwatch.StartNew();
-						List<ListedItem> fileList = await Win32StorageEnumerator.ListEntries(path, hFile, findData, cancellationToken, -1, GetPreloadIconSize(), intermediateAction: async (intermediateList) =>
+						List<ListedItem> fileList = await Win32StorageEnumerator.ListEntries(path, hFile, findData, cancellationToken, -1, GetPreloadIconSize(), intermediateAction: (intermediateList) =>
 						{
+							// Accumulate without re-rendering; a single sort + apply runs once the enumeration completes.
 							filesAndFolders.AddRange(intermediateList);
-
-							// The stable sort lands new items in final position without reordering visible ones; capped for huge listings
-							if (filesAndFolders.Count <= 10_000)
-								await OrderFilesAndFoldersAsync();
-
-							await ApplyFilesAndFoldersChangesAsync();
+							return Task.CompletedTask;
 						});
 						App.Logger.LogInformation("Listing: {Count} items enumerated in {EnumMs} ms", fileList.Count, enumSw.ElapsedMilliseconds);
 
@@ -2570,15 +2573,11 @@ namespace Files.App.ViewModels
 						cancellationToken,
 						-1,
 						GetPreloadIconSize(),
-						async (intermediateList) =>
+						(intermediateList) =>
 						{
+							// Accumulate without re-rendering; a single sort + apply runs once the enumeration completes.
 							filesAndFolders.AddRange(intermediateList);
-
-							// The stable sort lands new items in final position without reordering visible ones; capped for huge listings
-							if (filesAndFolders.Count <= 10_000)
-								await OrderFilesAndFoldersAsync();
-
-							await ApplyFilesAndFoldersChangesAsync();
+							return Task.CompletedTask;
 						});
 
 					filesAndFolders.AddRange(finalList);
