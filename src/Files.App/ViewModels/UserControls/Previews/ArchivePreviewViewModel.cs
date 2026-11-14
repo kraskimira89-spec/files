@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 using Files.App.ViewModels.Properties;
+using Microsoft.Extensions.Logging;
 using SevenZip;
 using System.Collections.Concurrent;
 using System.IO;
@@ -40,6 +41,46 @@ namespace Files.App.ViewModels.Previews
 			{
 				if (SetProperty(ref sortIndex, value))
 					RebuildTree();
+			}
+		}
+
+		private ArchiveNode? selectedEntry;
+		public ArchiveNode? SelectedEntry
+		{
+			get => selectedEntry;
+			set
+			{
+				if (SetProperty(ref selectedEntry, value))
+					OnPropertyChanged(nameof(CanExtractSelected));
+			}
+		}
+
+		public bool CanExtractSelected => SelectedEntry is { EntryIndex: >= 0 };
+
+		/// <summary>
+		/// Extracts the selected archive entry next to the archive file.
+		/// </summary>
+		public async Task ExtractSelectedAsync()
+		{
+			if (SelectedEntry is not { EntryIndex: >= 0 } selected)
+				return;
+
+			var archivePath = Item.ItemPath!;
+			var directory = Path.GetDirectoryName(archivePath) ?? string.Empty;
+			var destination = Path.Combine(directory, selected.Name);
+
+			try
+			{
+				using var stream = new FileStream(archivePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+				using var extractor = new SevenZipExtractor(stream);
+				await using var destinationStream = File.Create(destination);
+				await extractor.ExtractFileAsync(selected.EntryIndex, destinationStream);
+
+				App.Logger.LogInformation("Archive: extracted an entry from the preview");
+			}
+			catch (Exception e)
+			{
+				App.Logger.LogWarning(e, "Archive: could not extract an entry from the preview");
 			}
 		}
 
@@ -90,7 +131,8 @@ namespace Files.App.ViewModels.Previews
 					entry.FileName,
 					entry.IsDirectory ? string.Empty : entry.Size.ToLongSizeString(),
 					entry.IsDirectory,
-					entry.Size))
+					entry.Size,
+					(int)entry.Index))
 				.ToList();
 
 			if (stamp != 0)
@@ -167,6 +209,7 @@ namespace Files.App.ViewModels.Previews
 					{
 						child.SizeText = entry.SizeText;
 						child.Size = entry.Size;
+						child.EntryIndex = entry.Index;
 					}
 
 					node = child;
@@ -239,6 +282,7 @@ namespace Files.App.ViewModels.Previews
 		public bool IsExpanded { get; set; }
 		public ulong Size { get; set; }
 		public string SizeText { get; set; } = string.Empty;
+		public int EntryIndex { get; set; } = -1;
 		public List<ArchiveNode> Children { get; } = [];
 
 		public ArchiveNode(string name, bool isDirectory)
@@ -249,5 +293,5 @@ namespace Files.App.ViewModels.Previews
 		}
 	}
 
-	public sealed record ArchiveEntry(string Name, string SizeText, bool IsDirectory, ulong Size);
+	public sealed record ArchiveEntry(string Name, string SizeText, bool IsDirectory, ulong Size, int Index);
 }
