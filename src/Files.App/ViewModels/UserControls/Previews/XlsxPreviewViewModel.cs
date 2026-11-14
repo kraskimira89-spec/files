@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 using Files.App.ViewModels.Properties;
+using System.Globalization;
 using System.IO;
 using System.IO.Compression;
 using System.Text;
@@ -43,6 +44,7 @@ namespace Files.App.ViewModels.Previews
 			using var archive = new ZipArchive(stream, ZipArchiveMode.Read);
 
 			var sharedStrings = ReadSharedStrings(archive);
+			var (cellFormats, dateFormats) = ReadStyles(archive);
 			var sheets = ReadSheets(archive);
 			if (sheets.Count == 0)
 				sheets.Add(("Sheet1", "xl/worksheets/sheet1.xml"));
@@ -64,7 +66,7 @@ namespace Files.App.ViewModels.Previews
 					var cells = new List<(int Column, string Value)>();
 					foreach (var cell in row.Descendants(ns + "c"))
 					{
-						var text = ReadCellValue(cell, ns, sharedStrings);
+						var text = ReadCellValue(cell, ns, sharedStrings, cellFormats, dateFormats);
 						if (!string.IsNullOrEmpty(text))
 							cells.Add((ColumnIndex(cell.Attribute("r")?.Value), text));
 					}
@@ -131,7 +133,7 @@ namespace Files.App.ViewModels.Previews
 			return strings;
 		}
 
-		private static string ReadCellValue(XElement cell, XNamespace ns, List<string> sharedStrings)
+		private static string ReadCellValue(XElement cell, XNamespace ns, List<string> sharedStrings, List<int> cellFormats, HashSet<int> dateFormats)
 		{
 			var type = cell.Attribute("t")?.Value;
 			if (type is "inlineStr")
@@ -141,7 +143,61 @@ namespace Files.App.ViewModels.Previews
 			if (type is "s" && int.TryParse(value, out var index) && index >= 0 && index < sharedStrings.Count)
 				return sharedStrings[index];
 
+			if (type is null &&
+				double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var serial) &&
+				int.TryParse(cell.Attribute("s")?.Value, out var styleIndex) &&
+				styleIndex >= 0 && styleIndex < cellFormats.Count &&
+				dateFormats.Contains(cellFormats[styleIndex]))
+			{
+				return FormatDate(serial);
+			}
+
 			return value;
+		}
+
+		private static (List<int> CellFormats, HashSet<int> DateFormats) ReadStyles(ZipArchive archive)
+		{
+			var cellFormats = new List<int>();
+			var dateFormats = new HashSet<int> { 14, 15, 16, 17, 22 };
+
+			var entry = archive.GetEntry("xl/styles.xml");
+			if (entry is null)
+				return (cellFormats, dateFormats);
+
+			using var stream = entry.Open();
+			var document = XDocument.Load(stream);
+			var ns = document.Root!.Name.Namespace;
+
+			foreach (var numFmt in document.Descendants(ns + "numFmt"))
+			{
+				if (int.TryParse(numFmt.Attribute("numFmtId")?.Value, out var id) && id >= 164)
+				{
+					var code = numFmt.Attribute("formatCode")?.Value ?? string.Empty;
+					if (code.Contains("yyyy", StringComparison.OrdinalIgnoreCase) || code.Contains("dd", StringComparison.OrdinalIgnoreCase))
+						dateFormats.Add(id);
+				}
+			}
+
+			foreach (var xf in document.Descendants(ns + "cellXfs").Elements(ns + "xf"))
+			{
+				cellFormats.Add(int.TryParse(xf.Attribute("numFmtId")?.Value, out var id) ? id : 0);
+			}
+
+			return (cellFormats, dateFormats);
+		}
+
+		private static string FormatDate(double serial)
+		{
+			try
+			{
+				// Excel serial dates count days from 1899-12-30.
+				var date = new DateTime(1899, 12, 30).AddDays(serial);
+				return date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+			}
+			catch
+			{
+				return serial.ToString(CultureInfo.InvariantCulture);
+			}
 		}
 
 		private static int ColumnIndex(string? reference)
