@@ -40,7 +40,23 @@ namespace Files.App.Helpers
 						return ".xlsx";
 					if (archive.GetEntry("ppt/presentation.xml") is not null)
 						return ".pptx";
+					return null;
 				}
+
+				// Common image and rich-text containers, so a mislabeled file still previews.
+				if (head[0] == 0x89 && head[1] == 0x50 && head[2] == 0x4E && head[3] == 0x47)
+					return ".png";
+				if (head[0] == 0xFF && head[1] == 0xD8 && head[2] == 0xFF)
+					return ".jpg";
+				if (head[0] == 0x47 && head[1] == 0x49 && head[2] == 0x46 && head[3] == 0x38)
+					return ".gif";
+				if (head[0] == 0x42 && head[1] == 0x4D)
+					return ".bmp";
+				if ((head[0] == 0x49 && head[1] == 0x49 && head[2] == 0x2A && head[3] == 0x00) ||
+					(head[0] == 0x4D && head[1] == 0x4D && head[2] == 0x00 && head[3] == 0x2A))
+					return ".tif";
+				if (head[0] == 0x7B && head[1] == 0x5C && head[2] == 0x72 && head[3] == 0x74)
+					return ".rtf";
 
 				return null;
 			}

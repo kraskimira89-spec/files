@@ -334,10 +334,8 @@ namespace Files.App.ViewModels.UserControls
 
 			var rawExt = item.FileExtension.ToLowerInvariant();
 
-			// A mislabeled file (e.g. a .doc renamed to .pdf) should still open with the right preview.
-			var ext = rawExt is ".pdf" or ".doc" or ".docx" or ".xlsx" or ".pptx"
-				? PreviewFormatSniffer.DetectExtension(item.ItemPath) ?? rawExt
-				: rawExt;
+			// Use the real format when a file is mislabeled (e.g. a .doc renamed to .pdf, or a photo renamed to .txt).
+			var ext = PreviewFormatSniffer.DetectExtension(item.ItemPath) ?? rawExt;
 
 			if (!item.IsFtpItem &&
 				contentPageContext.PageType != ContentPageTypes.ZipFolder &&
