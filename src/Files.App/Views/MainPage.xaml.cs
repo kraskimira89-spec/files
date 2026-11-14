@@ -87,53 +87,71 @@ namespace Files.App.Views
 		}
 
 		private bool isQuickLookOpen;
+		private InfoPaneViewModel? quickLookViewModel;
 
 		private void QuickLook_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
 		{
-			if (isQuickLookOpen || ContentPageContext.SelectedItem is not { } item)
-				return;
-
-			// Never take the space bar away from text entry controls.
-			if (FocusManager.GetFocusedElement(Content.XamlRoot) is TextBox or RichEditBox or PasswordBox)
+			// The space toggles the overlay; never take it away from text entry controls.
+			if (!isQuickLookOpen &&
+				FocusManager.GetFocusedElement(Content.XamlRoot) is TextBox or RichEditBox or PasswordBox)
 				return;
 
 			args.Handled = true;
-			isQuickLookOpen = true;
-			_ = ShowQuickLookAsync(item);
+
+			if (isQuickLookOpen)
+				CloseQuickLook();
+			else if (ContentPageContext.SelectedItem is { } item)
+				_ = ShowQuickLookAsync(item);
 		}
+
+		private void QuickLookEscape_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+		{
+			if (!isQuickLookOpen)
+				return;
+
+			args.Handled = true;
+			CloseQuickLook();
+		}
+
+		private void QuickLookOverlay_Tapped(object sender, TappedRoutedEventArgs e) => CloseQuickLook();
+
+		private void QuickLookCard_Tapped(object sender, TappedRoutedEventArgs e) => e.Handled = true;
 
 		private async Task ShowQuickLookAsync(ListedItem item)
 		{
-			InfoPaneViewModel? viewModel = null;
+			isQuickLookOpen = true;
 
 			try
 			{
-				viewModel = new InfoPaneViewModel();
+				var viewModel = new InfoPaneViewModel();
 				viewModel.SelectedItem = item;
 				await viewModel.UpdateSelectedItemPreviewAsync();
 
-				if (viewModel.PreviewPaneContent is not { } content)
-					return;
-
-				var dialog = new ContentDialog
+				if (viewModel.PreviewPaneContent is not { } content || !isQuickLookOpen)
 				{
-					Title = item.Name,
-					Content = content,
-					CloseButtonText = Strings.Close.ToLocalized(),
-					FullSizeDesired = true,
-				};
+					viewModel.Dispose();
+					return;
+				}
 
-				await SetContentDialogRoot(dialog).TryShowAsync();
+				quickLookViewModel = viewModel;
+				QuickLookTitle.Text = item.Name;
+				QuickLookContent.Content = content;
+				QuickLookOverlay.Visibility = Visibility.Visible;
 			}
 			catch (Exception e)
 			{
 				App.Logger.LogWarning(e, "Quick Look failed");
+				CloseQuickLook();
 			}
-			finally
-			{
-				viewModel?.Dispose();
-				isQuickLookOpen = false;
-			}
+		}
+
+		private void CloseQuickLook()
+		{
+			isQuickLookOpen = false;
+			QuickLookOverlay.Visibility = Visibility.Collapsed;
+			QuickLookContent.Content = null;
+			quickLookViewModel?.Dispose();
+			quickLookViewModel = null;
 		}
 
 		private async Task AppRunningAsAdminPromptAsync()

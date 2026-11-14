@@ -110,6 +110,9 @@
 		<KeyboardAccelerator
 			Invoked="QuickLook_Invoked"
 			Key="Space" />
+		<KeyboardAccelerator
+			Invoked="QuickLookEscape_Invoked"
+			Key="Escape" />
 	</Page.KeyboardAccelerators>
 
 	<Grid>
@@ -340,6 +343,41 @@
 			</controls:SidebarView.Footer>
 		</controls:SidebarView>
 
+		<!--  Quick Look overlay (non-modal)  -->
+		<Grid
+			x:Name="QuickLookOverlay"
+			Grid.RowSpan="3"
+			Background="{ThemeResource SmokeFillColorDefaultBrush}"
+			Tapped="QuickLookOverlay_Tapped"
+			Visibility="Collapsed">
+			<Border
+				MaxWidth="960"
+				MaxHeight="720"
+				Margin="48"
+				HorizontalAlignment="Center"
+				VerticalAlignment="Center"
+				Background="{ThemeResource SolidBackgroundFillColorBaseBrush}"
+				BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+				BorderThickness="1"
+				CornerRadius="{StaticResource OverlayCornerRadius}"
+				Tapped="QuickLookCard_Tapped">
+				<Grid RowDefinitions="Auto,*">
+					<TextBlock
+						x:Name="QuickLookTitle"
+						Margin="16,12"
+						FontWeight="SemiBold"
+						TextTrimming="CharacterEllipsis" />
+					<ScrollViewer
+						Grid.Row="1"
+						Margin="16,0,16,16"
+						HorizontalScrollBarVisibility="Disabled"
+						VerticalScrollBarVisibility="Auto">
+						<ContentPresenter x:Name="QuickLookContent" />
+					</ScrollViewer>
+				</Grid>
+			</Border>
+		</Grid>
+
 		<!--  Review Files Prompt  -->
 		<TeachingTip
 			Title="{helpers:ResourceString Name=Hello}"
@@ -460,5 +498,6 @@
 			</VisualStateGroup>
 
 		</VisualStateManager.VisualStateGroups>
+
 	</Grid>
 </Page>
