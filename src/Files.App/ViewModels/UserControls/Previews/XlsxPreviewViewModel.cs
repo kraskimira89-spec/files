@@ -4,6 +4,7 @@
 using Files.App.ViewModels.Properties;
 using System.IO;
 using System.IO.Compression;
+using System.Text;
 using System.Xml.Linq;
 
 namespace Files.App.ViewModels.Previews
@@ -42,31 +43,76 @@ namespace Files.App.ViewModels.Previews
 			using var archive = new ZipArchive(stream, ZipArchiveMode.Read);
 
 			var sharedStrings = ReadSharedStrings(archive);
+			var sheets = ReadSheets(archive);
+			if (sheets.Count == 0)
+				sheets.Add(("Sheet1", "xl/worksheets/sheet1.xml"));
 
-			var sheetEntry = archive.GetEntry("xl/worksheets/sheet1.xml");
-			if (sheetEntry is null)
-				return string.Empty;
-
-			using var sheetStream = sheetEntry.Open();
-			var sheet = XDocument.Load(sheetStream);
-			var ns = sheet.Root!.Name.Namespace;
-
-			var lines = new List<string>();
-			foreach (var row in sheet.Descendants(ns + "row"))
+			var builder = new StringBuilder();
+			foreach (var (name, sheetPath) in sheets)
 			{
-				var cells = new List<(int Column, string Value)>();
-				foreach (var cell in row.Descendants(ns + "c"))
+				var entry = archive.GetEntry(sheetPath);
+				if (entry is null)
+					continue;
+
+				using var sheetStream = entry.Open();
+				var sheet = XDocument.Load(sheetStream);
+				var ns = sheet.Root!.Name.Namespace;
+
+				builder.AppendLine($"=== {name} ===");
+				foreach (var row in sheet.Descendants(ns + "row"))
 				{
-					var text = ReadCellValue(cell, ns, sharedStrings);
-					if (!string.IsNullOrEmpty(text))
-						cells.Add((ColumnIndex(cell.Attribute("r")?.Value), text));
+					var cells = new List<(int Column, string Value)>();
+					foreach (var cell in row.Descendants(ns + "c"))
+					{
+						var text = ReadCellValue(cell, ns, sharedStrings);
+						if (!string.IsNullOrEmpty(text))
+							cells.Add((ColumnIndex(cell.Attribute("r")?.Value), text));
+					}
+
+					if (cells.Count > 0)
+						builder.AppendLine(string.Concat(cells.OrderBy(c => c.Column).Select(c => FormatCell(c.Value))));
 				}
 
-				if (cells.Count > 0)
-					lines.Add(string.Concat(cells.OrderBy(c => c.Column).Select(c => FormatCell(c.Value))));
+				builder.AppendLine();
 			}
 
-			return string.Join(Environment.NewLine, lines);
+			return builder.ToString();
+		}
+
+		private static List<(string Name, string Path)> ReadSheets(ZipArchive archive)
+		{
+			var targets = new Dictionary<string, string>();
+			var relsEntry = archive.GetEntry("xl/_rels/workbook.xml.rels");
+			if (relsEntry is not null)
+			{
+				using var relsStream = relsEntry.Open();
+				var rels = XDocument.Load(relsStream);
+				foreach (var rel in rels.Descendants())
+				{
+					var id = rel.Attribute("Id")?.Value;
+					var target = rel.Attribute("Target")?.Value;
+					if (id is not null && target is not null)
+						targets[id] = target.StartsWith('/') ? target.TrimStart('/') : "xl/" + target.Replace('\\', '/');
+				}
+			}
+
+			var sheets = new List<(string, string)>();
+			var workbookEntry = archive.GetEntry("xl/workbook.xml");
+			if (workbookEntry is null)
+				return sheets;
+
+			using var workbookStream = workbookEntry.Open();
+			var workbook = XDocument.Load(workbookStream);
+			var ns = workbook.Root!.Name.Namespace;
+			foreach (var sheet in workbook.Descendants(ns + "sheet"))
+			{
+				var name = sheet.Attribute("name")?.Value ?? "Sheet";
+				var relId = sheet.Attributes().FirstOrDefault(attribute => attribute.Name.LocalName == "id")?.Value;
+				if (relId is not null && targets.TryGetValue(relId, out var sheetPath))
+					sheets.Add((name, sheetPath));
+			}
+
+			return sheets;
 		}
 
 		private static List<string> ReadSharedStrings(ZipArchive archive)
